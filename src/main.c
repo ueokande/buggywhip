@@ -6,8 +6,7 @@
 
 #include "strutil.h"
 
-int main(void) {
-
+void do_readline() {
   char *line;
 
   while ((line = readline("> "))) {
@@ -19,6 +18,11 @@ int main(void) {
 
     free(line);
   }
+}
+
+int main(void) {
+
+  do_readline();
 
   return EXIT_SUCCESS;
 }
