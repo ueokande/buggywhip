@@ -3,8 +3,12 @@
 
 #include <string.h>
 
-static inline _Bool strcmp_eq(const char *s1, const char *s2) {
-  return strcmp(s1, s2) == 0;
+/*
+ * Compares first word in line with command
+ */
+static inline _Bool command_eq(const char *line, const char *command) {
+  size_t len = strlen(command);
+  return strncmp(line, command, len) == 0;
 }
 
 #endif
