@@ -87,7 +87,12 @@ void do_readline(struct bgw_control *ctl) {
     } else if (command_eq(line, "run")) {
     } else if (command_eq(line, "backtrace")) {
     } else {
-      fprintf(stdout, "Undefined command: \"%s\"\n",  line);
+      const char *rem = strchr(line, ' ');
+      if (rem == NULL) {
+        fprintf(stdout, "Undefined command: \"%s\"\n",  line);
+      } else {
+        fprintf(stdout, "Undefined command: \"%.*s\"\n", (int)(rem - line), line);
+      }
     }
   }
   free(line);
