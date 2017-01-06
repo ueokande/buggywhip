@@ -35,6 +35,10 @@ struct bgw_control {
   sigset_t sigset;      /* catch SIGCHLD and SIGWINCH with signalfd() */
   sigset_t sigorg;      /* original signal mask */
   int sigfd;            /* file descriptor for signalfd() */
+
+  char *source_name;
+
+  char *shebang;
 };
 
 
@@ -105,6 +109,64 @@ static void get_slave(struct bgw_control *ctl) {
   ioctl(ctl->slave, TIOCSCTTY, 0);
 }
 
+static void exec_shell(struct bgw_control *ctl) {
+  FILE *fp;
+  ssize_t read_size;
+  size_t len = 0;
+  char *first_line;
+  char *p;
+  int argc;
+  int i;
+  char **argv;
+
+  if ((fp = fopen(ctl->source_name, "r")) == NULL) {
+    warn("cannot open %s", ctl->source_name);
+    fail(ctl);
+  }
+  read_size = getline(&first_line, &len, fp);
+  fclose(fp);
+
+  // Check if first line starts with "#!"
+  if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
+    warn("missing shebang: %s", ctl->source_name);
+    fail(ctl);
+  }
+
+  // Trim first #! and last '\n'
+  if (first_line[read_size - 1] == '\n') {
+    first_line[read_size - 1] = '\0';
+    --read_size;
+  }
+  p = trim_head(first_line + 2);
+  read_size -= p - first_line;
+  first_line = p;
+
+  for (argc = 0, i = 0; i < read_size; ++i) {
+    if (!isblank(first_line[i])) {
+      continue;
+    }
+    i = trim_head(&first_line[i]) - first_line;
+    ++argc;
+  }
+  argv = malloc(sizeof(char*) * (argc + 2));
+
+  for (argc = 0, i = 0; i < read_size; ++i) {
+    if (!isblank(first_line[i])) {
+      continue;
+    }
+    while (isblank(first_line[i])) {
+      first_line[i] = '\0';
+      ++i;
+    }
+    argv[argc] = &first_line[i];
+    ++argc;
+  }
+  argv[argc - 0] = ctl->source_name;
+  argv[argc + 1] = NULL;
+
+  execvp(first_line, argv);
+}
+
 static void do_shell(struct bgw_control *ctl) {
 
   get_slave(ctl);
@@ -117,7 +179,7 @@ static void do_shell(struct bgw_control *ctl) {
 
   sigprocmask(SIG_SETMASK, &ctl->sigorg, NULL);
 
-  execl("/bin/sh", "-s", NULL);
+  exec_shell(ctl);
 
   warn("failed to execute shell");
   fail(ctl);
@@ -134,9 +196,14 @@ static void get_master(struct bgw_control *ctl) {
   }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
 
   struct bgw_control ctl = {};
+
+  if (argc < 2) {
+    errx(EXIT_FAILURE, "not enough arguments");
+  }
+  ctl.source_name = argv[1];
 
   get_master(&ctl);
 
