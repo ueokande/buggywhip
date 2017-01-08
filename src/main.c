@@ -14,8 +14,12 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <limits.h>
+#include <libgen.h>
 #include <sys/signalfd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <readline/readline.h>
@@ -37,14 +41,27 @@ struct bgw_control {
   int sigfd;            /* file descriptor for signalfd() */
 
   char *source_name;
+  char fifo_name[PATH_MAX + 1];
 
   char *shebang;
 };
 
 
 static void done(struct bgw_control *ctl) {
+  const char *tmpdir;
+
   tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl->attrs);
   kill(ctl->child, SIGTERM);
+
+
+  if (unlink(ctl->fifo_name)) {
+    warn("unlink failed");
+  }
+
+  tmpdir = dirname(ctl->fifo_name);
+  if (rmdir(tmpdir)) {
+    warn("rmdir failed");
+  }
 
   exit(EXIT_SUCCESS);
 }
@@ -161,7 +178,7 @@ static void exec_shell(struct bgw_control *ctl) {
     argv[argc] = &first_line[i];
     ++argc;
   }
-  argv[argc - 0] = ctl->source_name;
+  argv[argc - 0] = ctl->fifo_name;
   argv[argc + 1] = NULL;
 
   execvp(first_line, argv);
@@ -196,6 +213,22 @@ static void get_master(struct bgw_control *ctl) {
   }
 }
 
+static void get_fifo(struct bgw_control *ctl) {
+  char tmpdir[PATH_MAX + 1] = "/tmp/bgw-XXXXXX";
+
+  if (mkdtemp(tmpdir) == NULL) {
+    warn("mkdtemp failed");
+    fail(ctl);
+  }
+
+  sprintf(ctl->fifo_name, "%s/%s", tmpdir, "script");
+
+  if (mkfifo(ctl->fifo_name, S_IWUSR | S_IRUSR) < 0) {
+    warn("mkfifoat failed");
+    fail(ctl);
+  }
+}
+
 int main(int argc, char **argv) {
 
   struct bgw_control ctl = {};
@@ -204,6 +237,8 @@ int main(int argc, char **argv) {
     errx(EXIT_FAILURE, "not enough arguments");
   }
   ctl.source_name = argv[1];
+
+  get_fifo(&ctl);
 
   get_master(&ctl);
 
