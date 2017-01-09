@@ -74,6 +74,7 @@ void command_do(struct bgw_control *ctl, int fd, const char *args) {
 void do_readline(struct bgw_control *ctl) {
 	char *line;
 	int fifo_fd;
+	int status;
 
 	fifo_fd = open(ctl->fifo_name, O_WRONLY);
 	if (fifo_fd < 0) {
@@ -82,6 +83,11 @@ void do_readline(struct bgw_control *ctl) {
 	}
 
 	while ((line = readline("> "))) {
+		if (waitpid(ctl->child, &status, WNOHANG) > 0) {
+			fprintf(stderr, "shell terminated with %d\n", status);
+			break;
+		}
+
 		add_history(line);
 
 		if (line[0] == '\0') {
