@@ -1,5 +1,6 @@
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <paths.h>
 #include <pty.h>
 #include <signal.h>
@@ -71,20 +72,28 @@ static void fail(struct bgw_control *ctl) {
   done(ctl);
 }
 
-void command_do(struct bgw_control *ctl, const char *args) {
+void command_do(struct bgw_control *ctl, int fd, const char *args) {
   size_t args_length = strlen(args);
   char *line = malloc(args_length + 1);
   memcpy(line, args, args_length);
   line[args_length] = '\n';
-  if (write_all(ctl->master, line, args_length + 1)) {
+  if (write_all(fd, line, args_length + 1)) {
+    warn("failed to write to fd");
     fail(ctl);
   }
   free(line);
-  fdatasync(ctl->master);
+  fdatasync(fd);
 }
 
 void do_readline(struct bgw_control *ctl) {
   char *line;
+  int fifo_fd;
+
+  fifo_fd = open(ctl->fifo_name, O_WRONLY);
+  if (fifo_fd < 0) {
+    warn("failed to open fifo");
+    fail(ctl);
+  }
 
   while ((line = readline("> "))) {
     add_history(line);
@@ -96,7 +105,7 @@ void do_readline(struct bgw_control *ctl) {
     } else if (command_eq(line, "do")) {
       const char *args = strchr(line, ' ');
       if (args != NULL) {
-        command_do(ctl, ++args);
+        command_do(ctl, fifo_fd, ++args);
       }
     } else if (command_eq(line, "next")) {
     } else if (command_eq(line, "help")) {
@@ -117,6 +126,8 @@ void do_readline(struct bgw_control *ctl) {
     }
   }
   free(line);
+
+  close(fifo_fd);
 
   done(ctl);
 }
@@ -165,7 +176,7 @@ static void exec_shell(struct bgw_control *ctl) {
     i = trim_head(&first_line[i]) - first_line;
     ++argc;
   }
-  argv = malloc(sizeof(char*) * (argc + 2));
+  argv = malloc(sizeof(char*) * (argc + 3));
 
   for (argc = 0, i = 0; i < read_size; ++i) {
     if (!isblank(first_line[i])) {
@@ -175,11 +186,12 @@ static void exec_shell(struct bgw_control *ctl) {
       first_line[i] = '\0';
       ++i;
     }
-    argv[argc] = &first_line[i];
+    argv[argc + 1] = &first_line[i];
     ++argc;
   }
-  argv[argc - 0] = ctl->fifo_name;
-  argv[argc + 1] = NULL;
+  argv[0] = ctl->source_name;
+  argv[argc + 1] = ctl->fifo_name;
+  argv[argc + 2] = NULL;
 
   execvp(first_line, argv);
 }
