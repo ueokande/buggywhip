@@ -22,11 +22,9 @@
 #include "strutil.h"
 
 struct bgw_control {
-	char *shell;			/* shell to be executed */
 	int master;			/* pseudoterminal master file descriptor */
 	int slave;			/* pseudoterminal slave file descriptor */
 	pid_t child;			/* child pid */
-	int childstatus;		/* child process exit value */
 	struct termios attrs;		/* slave terminal runtime attributes */
 	struct winsize win;		/* terminal window size */
 
