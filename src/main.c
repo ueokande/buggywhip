@@ -26,7 +26,6 @@
 #include <readline/readline.h>
 
 #include "strutil.h"
-#include "fdutil.h"
 
 struct bgw_control {
   char *shell;          /* shell to be executed */
@@ -73,15 +72,10 @@ static void fail(struct bgw_control *ctl) {
 }
 
 void command_do(struct bgw_control *ctl, int fd, const char *args) {
-  size_t args_length = strlen(args);
-  char *line = malloc(args_length + 1);
-  memcpy(line, args, args_length);
-  line[args_length] = '\n';
-  if (write_all(fd, line, args_length + 1)) {
+  if (dprintf(fd, "%s\n", args) < 0) {
     warn("failed to write to fd");
     fail(ctl);
   }
-  free(line);
   fdatasync(fd);
 }
 
