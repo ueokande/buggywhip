@@ -45,7 +45,6 @@ static void done(struct bgw_control *ctl) {
 	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl->attrs);
 	kill(ctl->child, SIGTERM);
 
-
 	if (unlink(ctl->fifo_name)) {
 		warn("unlink failed");
 	}
@@ -148,7 +147,7 @@ static void exec_shell(struct bgw_control *ctl) {
 
 	// Check if first line starts with "#!"
 	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
-		warn("missing shebang: %s", ctl->source_name);
+		fprintf(stderr, "%s: missing shebang", ctl->source_name);
 		fail(ctl);
 	}
 
@@ -238,7 +237,7 @@ int main(int argc, char **argv) {
 	struct bgw_control ctl = {};
 
 	if (argc < 2) {
-		errx(EXIT_FAILURE, "not enough arguments");
+		err(EXIT_FAILURE, "not enough arguments");
 	}
 	ctl.source_name = argv[1];
 
@@ -261,7 +260,6 @@ int main(int argc, char **argv) {
 
 	fflush(stdout);
 	ctl.child = fork();
-
 
 	switch (ctl.child) {
 	case -1:
