@@ -1,29 +1,23 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
+#include <limits.h>
 #include <paths.h>
 #include <pty.h>
 #include <signal.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdio.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdlib.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <limits.h>
-#include <libgen.h>
-#include <sys/signalfd.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <readline/history.h>
 #include <readline/readline.h>
-#include <readline/readline.h>
+#include <sys/signalfd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "strutil.h"
 
