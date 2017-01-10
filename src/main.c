@@ -30,10 +30,7 @@ struct bgw_control {
 
 	char *source_name;
 	char fifo_name[PATH_MAX + 1];
-
-	char *shebang;
 } ctl = {};
-
 
 static void done() {
 	const char *tmpdir;
