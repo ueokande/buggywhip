@@ -4,6 +4,7 @@
 #include <libgen.h>
 #include <limits.h>
 #include <paths.h>
+#include <poll.h>
 #include <pty.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -30,9 +31,10 @@ struct bgw_control {
 
 	char *source_name;
 	char fifo_name[PATH_MAX + 1];
+	int fifo_fd;
 } ctl = {};
 
-static void done() {
+void done() {
 	const char *tmpdir;
 
 	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl.attrs);
@@ -50,68 +52,95 @@ static void done() {
 	exit(EXIT_SUCCESS);
 }
 
-static void fail() {
+void fail() {
 	kill(0, SIGTERM);
 	done();
 }
 
-void command_do(int fd, const char *args) {
-	if (dprintf(fd, "%s\n", args) < 0) {
+void command_do(const char *args) {
+	if (dprintf(ctl.fifo_fd, "%s\n", args) < 0) {
 		warn("failed to write to fd");
 		fail();
 	}
-	fdatasync(fd);
+	fdatasync(ctl.fifo_fd);
+}
+
+void readline_handler(char *line) {
+	add_history(line);
+
+	if (line == NULL) {
+		// EOF
+                rl_callback_handler_remove ();
+	} else if (line[0] == '\0') {
+		// Do nothing
+	} else if (command_eq(line, "quit")) {
+                rl_callback_handler_remove ();
+	} else if (command_eq(line, "do")) {
+		const char *args = strchr(line, ' ');
+		if (args != NULL) {
+			command_do(++args);
+		}
+	} else if (command_eq(line, "next")) {
+	} else if (command_eq(line, "help")) {
+	} else if (command_eq(line, "list")) {
+	} else if (command_eq(line, "continue")) {
+	} else if (command_eq(line, "edit")) {
+	} else if (command_eq(line, "step")) {
+	} else if (command_eq(line, "print")) {
+	} else if (command_eq(line, "run")) {
+	} else if (command_eq(line, "backtrace")) {
+	} else {
+		const char *rem = strchr(line, ' ');
+		if (rem == NULL) {
+			fprintf(stdout, "Undefined command: \"%s\"\n",	line);
+		} else {
+			fprintf(stdout, "Undefined command: \"%.*s\"\n", (int)(rem - line), line);
+		}
+	}
+
+	free(line);
 }
 
 void do_readline() {
 	char *line;
-	int fifo_fd;
 	int status;
 
-	fifo_fd = open(ctl.fifo_name, O_WRONLY);
-	if (fifo_fd < 0) {
+	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
+
+	if (ctl.fifo_fd < 0) {
 		warn("failed to open fifo");
 		fail();
 	}
 
-	while ((line = readline("> "))) {
+	struct pollfd pfd[] = {
+		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
+	};
+
+        rl_callback_handler_install ("> ", readline_handler);
+
+	while (1) {
+		int ret;
+		int status;
+
+		ret = poll(pfd, 1, -1);
+		if (ret < 0) {
+			warn("poll failed");
+			fail();
+		}
+
+		if (pfd[0].revents == 0) {
+			continue;
+		}
+
 		if (waitpid(ctl.child, &status, WNOHANG) > 0) {
 			fprintf(stderr, "shell terminated with %d\n", status);
 			break;
 		}
 
-		add_history(line);
-
-		if (line[0] == '\0') {
-			continue;
-		} else if (command_eq(line, "quit")) {
-			break;
-		} else if (command_eq(line, "do")) {
-			const char *args = strchr(line, ' ');
-			if (args != NULL) {
-				command_do(fifo_fd, ++args);
-			}
-		} else if (command_eq(line, "next")) {
-		} else if (command_eq(line, "help")) {
-		} else if (command_eq(line, "list")) {
-		} else if (command_eq(line, "continue")) {
-		} else if (command_eq(line, "edit")) {
-		} else if (command_eq(line, "step")) {
-		} else if (command_eq(line, "print")) {
-		} else if (command_eq(line, "run")) {
-		} else if (command_eq(line, "backtrace")) {
-		} else {
-			const char *rem = strchr(line, ' ');
-			if (rem == NULL) {
-				fprintf(stdout, "Undefined command: \"%s\"\n",	line);
-			} else {
-				fprintf(stdout, "Undefined command: \"%.*s\"\n", (int)(rem - line), line);
-			}
-		}
+		rl_callback_read_char ();
 	}
-	free(line);
 
-	close(fifo_fd);
+	close(ctl.fifo_fd);
 
 	done();
 }
