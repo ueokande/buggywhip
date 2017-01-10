@@ -70,11 +70,11 @@ void readline_handler(char *line) {
 
 	if (line == NULL) {
 		// EOF
-                rl_callback_handler_remove ();
+		rl_callback_handler_remove ();
 	} else if (line[0] == '\0') {
 		// Do nothing
 	} else if (command_eq(line, "quit")) {
-                rl_callback_handler_remove ();
+		rl_callback_handler_remove ();
 	} else if (command_eq(line, "do")) {
 		const char *args = strchr(line, ' ');
 		if (args != NULL) {
@@ -101,12 +101,19 @@ void readline_handler(char *line) {
 	free(line);
 }
 
+void finish(int signum) {
+	int status;
+	if (waitpid(ctl.child, &status, 0) < 0) {
+		warn("failed to waitpid");
+	}
+	fprintf(stderr, "shell terminated with %d\n", status);
+}
+
 void do_readline() {
 	char *line;
 	int status;
 
 	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
-
 	if (ctl.fifo_fd < 0) {
 		warn("failed to open fifo");
 		fail();
@@ -116,7 +123,9 @@ void do_readline() {
 		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
 	};
 
-        rl_callback_handler_install ("> ", readline_handler);
+	rl_callback_handler_install ("> ", readline_handler);
+
+	signal(SIGCHLD, finish);
 
 	while (1) {
 		int ret;
@@ -124,17 +133,16 @@ void do_readline() {
 
 		ret = poll(pfd, 1, -1);
 		if (ret < 0) {
+			if (errno == EINTR) {
+				break;
+			}
+
 			warn("poll failed");
 			fail();
 		}
 
 		if (pfd[0].revents == 0) {
 			continue;
-		}
-
-		if (waitpid(ctl.child, &status, WNOHANG) > 0) {
-			fprintf(stderr, "shell terminated with %d\n", status);
-			break;
 		}
 
 		rl_callback_read_char ();
