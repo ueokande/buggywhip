@@ -36,20 +36,20 @@ struct bgw_control {
 	char fifo_name[PATH_MAX + 1];
 
 	char *shebang;
-};
+} ctl = {};
 
 
-static void done(struct bgw_control *ctl) {
+static void done() {
 	const char *tmpdir;
 
-	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl->attrs);
-	kill(ctl->child, SIGTERM);
+	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl.attrs);
+	kill(ctl.child, SIGTERM);
 
-	if (unlink(ctl->fifo_name)) {
+	if (unlink(ctl.fifo_name)) {
 		warn("unlink failed");
 	}
 
-	tmpdir = dirname(ctl->fifo_name);
+	tmpdir = dirname(ctl.fifo_name);
 	if (rmdir(tmpdir)) {
 		warn("rmdir failed");
 	}
@@ -57,12 +57,12 @@ static void done(struct bgw_control *ctl) {
 	exit(EXIT_SUCCESS);
 }
 
-static void fail(struct bgw_control *ctl) {
+static void fail() {
 	kill(0, SIGTERM);
 	done(ctl);
 }
 
-void command_do(struct bgw_control *ctl, int fd, const char *args) {
+void command_do(int fd, const char *args) {
 	if (dprintf(fd, "%s\n", args) < 0) {
 		warn("failed to write to fd");
 		fail(ctl);
@@ -70,19 +70,19 @@ void command_do(struct bgw_control *ctl, int fd, const char *args) {
 	fdatasync(fd);
 }
 
-void do_readline(struct bgw_control *ctl) {
+void do_readline() {
 	char *line;
 	int fifo_fd;
 	int status;
 
-	fifo_fd = open(ctl->fifo_name, O_WRONLY);
+	fifo_fd = open(ctl.fifo_name, O_WRONLY);
 	if (fifo_fd < 0) {
 		warn("failed to open fifo");
 		fail(ctl);
 	}
 
 	while ((line = readline("> "))) {
-		if (waitpid(ctl->child, &status, WNOHANG) > 0) {
+		if (waitpid(ctl.child, &status, WNOHANG) > 0) {
 			fprintf(stderr, "shell terminated with %d\n", status);
 			break;
 		}
@@ -96,7 +96,7 @@ void do_readline(struct bgw_control *ctl) {
 		} else if (command_eq(line, "do")) {
 			const char *args = strchr(line, ' ');
 			if (args != NULL) {
-				command_do(ctl, fifo_fd, ++args);
+				command_do(fifo_fd, ++args);
 			}
 		} else if (command_eq(line, "next")) {
 		} else if (command_eq(line, "help")) {
@@ -123,12 +123,12 @@ void do_readline(struct bgw_control *ctl) {
 	done(ctl);
 }
 
-static void get_slave(struct bgw_control *ctl) {
+static void get_slave() {
 	setsid();
-	ioctl(ctl->slave, TIOCSCTTY, 0);
+	ioctl(ctl.slave, TIOCSCTTY, 0);
 }
 
-static void exec_shell(struct bgw_control *ctl) {
+static void exec_shell() {
 	FILE *fp;
 	ssize_t read_size;
 	size_t len = 0;
@@ -138,8 +138,8 @@ static void exec_shell(struct bgw_control *ctl) {
 	int i;
 	char **argv;
 
-	if ((fp = fopen(ctl->source_name, "r")) == NULL) {
-		warn("cannot open %s", ctl->source_name);
+	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
+		warn("cannot open %s", ctl.source_name);
 		fail(ctl);
 	}
 	read_size = getline(&first_line, &len, fp);
@@ -147,7 +147,7 @@ static void exec_shell(struct bgw_control *ctl) {
 
 	// Check if first line starts with "#!"
 	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
-		fprintf(stderr, "%s: missing shebang", ctl->source_name);
+		fprintf(stderr, "%s: missing shebang", ctl.source_name);
 		fail(ctl);
 	}
 
@@ -180,24 +180,24 @@ static void exec_shell(struct bgw_control *ctl) {
 		argv[argc + 1] = &first_line[i];
 		++argc;
 	}
-	argv[0] = ctl->source_name;
-	argv[argc + 1] = ctl->fifo_name;
+	argv[0] = ctl.source_name;
+	argv[argc + 1] = ctl.fifo_name;
 	argv[argc + 2] = NULL;
 
 	execvp(first_line, argv);
 }
 
-static void do_shell(struct bgw_control *ctl) {
+static void do_shell() {
 
 	get_slave(ctl);
 
-	close(ctl->master);
-	close(ctl->sigfd);
+	close(ctl.master);
+	close(ctl.sigfd);
 
-	dup2(ctl->slave, STDIN_FILENO);
-	close(ctl->slave);
+	dup2(ctl.slave, STDIN_FILENO);
+	close(ctl.slave);
 
-	sigprocmask(SIG_SETMASK, &ctl->sigorg, NULL);
+	sigprocmask(SIG_SETMASK, &ctl.sigorg, NULL);
 
 	exec_shell(ctl);
 
@@ -205,18 +205,18 @@ static void do_shell(struct bgw_control *ctl) {
 	fail(ctl);
 }
 
-static void get_master(struct bgw_control *ctl) {
-	if (tcgetattr(STDIN_FILENO, &ctl->attrs) != 0) {
+static void get_master() {
+	if (tcgetattr(STDIN_FILENO, &ctl.attrs) != 0) {
 		err(EXIT_FAILURE, "failed to get terminal attributes");
 	}
-	ioctl(STDIN_FILENO, TIOCGWINSZ, (char *)&ctl->win);
-	if (openpty(&ctl->master, &ctl->slave, NULL, &ctl->attrs, &ctl->win)) {
+	ioctl(STDIN_FILENO, TIOCGWINSZ, (char *)&ctl.win);
+	if (openpty(&ctl.master, &ctl.slave, NULL, &ctl.attrs, &ctl.win)) {
 		warn("openpty failed");
 		fail(ctl);
 	}
 }
 
-static void get_fifo(struct bgw_control *ctl) {
+static void get_fifo() {
 	char tmpdir[PATH_MAX + 1] = "/tmp/bgw-XXXXXX";
 
 	if (mkdtemp(tmpdir) == NULL) {
@@ -224,17 +224,15 @@ static void get_fifo(struct bgw_control *ctl) {
 		fail(ctl);
 	}
 
-	sprintf(ctl->fifo_name, "%s/%s", tmpdir, "script");
+	sprintf(ctl.fifo_name, "%s/%s", tmpdir, "script");
 
-	if (mkfifo(ctl->fifo_name, S_IWUSR | S_IRUSR) < 0) {
+	if (mkfifo(ctl.fifo_name, S_IWUSR | S_IRUSR) < 0) {
 		warn("mkfifoat failed");
 		fail(ctl);
 	}
 }
 
 int main(int argc, char **argv) {
-
-	struct bgw_control ctl = {};
 
 	if (argc < 2) {
 		err(EXIT_FAILURE, "not enough arguments");
@@ -264,13 +262,13 @@ int main(int argc, char **argv) {
 	switch (ctl.child) {
 	case -1:
 		warn("fork failed");
-		fail(&ctl);
+		fail();
 		break;
 	case 0:	 // child process
-		do_shell(&ctl);
+		do_shell();
 		break;
 	default:	// parent process
-		do_readline(&ctl);
+		do_readline();
 		break;
 	}
 
