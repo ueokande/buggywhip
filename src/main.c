@@ -28,10 +28,6 @@ struct bgw_control {
 	struct termios attrs;		/* slave terminal runtime attributes */
 	struct winsize win;		/* terminal window size */
 
-	sigset_t sigset;		/* catch SIGCHLD and SIGWINCH with signalfd() */
-	sigset_t sigorg;		/* original signal mask */
-	int sigfd;			/* file descriptor for signalfd() */
-
 	char *source_name;
 	char fifo_name[PATH_MAX + 1];
 
@@ -192,12 +188,9 @@ static void do_shell() {
 	get_slave(ctl);
 
 	close(ctl.master);
-	close(ctl.sigfd);
 
 	dup2(ctl.slave, STDIN_FILENO);
 	close(ctl.slave);
-
-	sigprocmask(SIG_SETMASK, &ctl.sigorg, NULL);
 
 	exec_shell(ctl);
 
@@ -242,19 +235,6 @@ int main(int argc, char **argv) {
 	get_fifo(&ctl);
 
 	get_master(&ctl);
-
-	sigemptyset(&ctl.sigset);
-	sigaddset(&ctl.sigset, SIGCHLD);
-	sigaddset(&ctl.sigset, SIGWINCH);
-	sigaddset(&ctl.sigset, SIGTERM);
-	sigaddset(&ctl.sigset, SIGINT);
-	sigaddset(&ctl.sigset, SIGQUIT);
-
-	sigprocmask(SIG_BLOCK, &ctl.sigset, &ctl.sigorg);
-
-	if ((ctl.sigfd = signalfd(-1, &ctl.sigset, SFD_CLOEXEC)) < 0) {
-		err(EXIT_FAILURE, "cannot set signal handler");
-	}
 
 	fflush(stdout);
 	ctl.child = fork();
