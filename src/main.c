@@ -52,13 +52,13 @@ static void done() {
 
 static void fail() {
 	kill(0, SIGTERM);
-	done(ctl);
+	done();
 }
 
 void command_do(int fd, const char *args) {
 	if (dprintf(fd, "%s\n", args) < 0) {
 		warn("failed to write to fd");
-		fail(ctl);
+		fail();
 	}
 	fdatasync(fd);
 }
@@ -71,7 +71,7 @@ void do_readline() {
 	fifo_fd = open(ctl.fifo_name, O_WRONLY);
 	if (fifo_fd < 0) {
 		warn("failed to open fifo");
-		fail(ctl);
+		fail();
 	}
 
 	while ((line = readline("> "))) {
@@ -113,7 +113,7 @@ void do_readline() {
 
 	close(fifo_fd);
 
-	done(ctl);
+	done();
 }
 
 static void get_slave() {
@@ -133,7 +133,7 @@ static void exec_shell() {
 
 	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
 		warn("cannot open %s", ctl.source_name);
-		fail(ctl);
+		fail();
 	}
 	read_size = getline(&first_line, &len, fp);
 	fclose(fp);
@@ -141,7 +141,7 @@ static void exec_shell() {
 	// Check if first line starts with "#!"
 	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
 		fprintf(stderr, "%s: missing shebang", ctl.source_name);
-		fail(ctl);
+		fail();
 	}
 
 	// Trim first #! and last '\n'
@@ -192,7 +192,7 @@ static void do_shell() {
 	exec_shell(ctl);
 
 	warn("failed to execute shell");
-	fail(ctl);
+	fail();
 }
 
 static void get_master() {
@@ -202,7 +202,7 @@ static void get_master() {
 	ioctl(STDIN_FILENO, TIOCGWINSZ, (char *)&ctl.win);
 	if (openpty(&ctl.master, &ctl.slave, NULL, &ctl.attrs, &ctl.win)) {
 		warn("openpty failed");
-		fail(ctl);
+		fail();
 	}
 }
 
@@ -211,14 +211,14 @@ static void get_fifo() {
 
 	if (mkdtemp(tmpdir) == NULL) {
 		warn("mkdtemp failed");
-		fail(ctl);
+		fail();
 	}
 
 	sprintf(ctl.fifo_name, "%s/%s", tmpdir, "script");
 
 	if (mkfifo(ctl.fifo_name, S_IWUSR | S_IRUSR) < 0) {
 		warn("mkfifoat failed");
-		fail(ctl);
+		fail();
 	}
 }
 
