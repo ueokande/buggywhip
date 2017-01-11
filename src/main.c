@@ -158,66 +158,74 @@ static void get_slave() {
 	ioctl(ctl.slave, TIOCSCTTY, 0);
 }
 
-static void exec_shell() {
+/*
+ * get_exec_params() parses a shebang in filename, and returns its executable
+ * path and argv.  argv[0] is set filename, and last element of argv is set
+ * NULL in order to pass to execv(2).
+ *
+ * User must free returned path and argv on successed.
+ *
+ * The function returns zero on successful, otherwise returns -1.
+ */
+static int get_exec_params(char **path, char ***argv, const char *filename) {
 	FILE *fp;
 	ssize_t read_size;
 	size_t len = 0;
-	char *first_line;
 	char *p;
 	int argc;
 	int i;
-	char **argv;
 
 	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
 		warn("cannot open %s", ctl.source_name);
 		fail();
 	}
-	read_size = getline(&first_line, &len, fp);
+	read_size = getline(path, &len, fp);
 	fclose(fp);
 
 	// Check if first line starts with "#!"
-	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
-		fprintf(stderr, "%s: missing shebang", ctl.source_name);
-		fail();
+	if (read_size < 2 || (*path)[0] != '#' || (*path)[1] != '!') {
+		fprintf(stderr, "%s: missing shebang", filename);
+		free(path);
+		return -1;
 	}
 
 	// Trim first #! and last '\n'
-	if (first_line[read_size - 1] == '\n') {
-		first_line[read_size - 1] = '\0';
+	if ((*path)[read_size - 1] == '\n') {
+		(*path)[read_size - 1] = '\0';
 		--read_size;
 	}
-	p = trim_head(first_line + 2);
-	read_size -= p - first_line;
-	first_line = p;
+	p = trim_head(*path + 2);
+	read_size -= p - *path;
+	*path = p;
 
 	for (argc = 0, i = 0; i < read_size; ++i) {
-		if (!isblank(first_line[i])) {
+		if (!isblank((*path)[i])) {
 			continue;
 		}
-		i = trim_head(&first_line[i]) - first_line;
+		i = trim_head(&(*path)[i]) - *path;
 		++argc;
 	}
-	argv = malloc(sizeof(char*) * (argc + 3));
+	*argv = malloc(sizeof(char*) * (argc + 3));
 
 	for (argc = 0, i = 0; i < read_size; ++i) {
-		if (!isblank(first_line[i])) {
+		if (!isblank((*path)[i])) {
 			continue;
 		}
-		while (isblank(first_line[i])) {
-			first_line[i] = '\0';
+		while (isblank((*path)[i])) {
+			(*path)[i] = '\0';
 			++i;
 		}
-		argv[argc + 1] = &first_line[i];
+		(*argv)[argc + 1] = &(*path)[i];
 		++argc;
 	}
-	argv[0] = ctl.source_name;
-	argv[argc + 1] = ctl.fifo_name;
-	argv[argc + 2] = NULL;
+	(*argv)[0] = ctl.source_name;
+	(*argv)[argc + 1] = ctl.fifo_name;
+	(*argv)[argc + 2] = NULL;
 
-	execvp(first_line, argv);
+	return 0;
 }
 
-static void do_shell() {
+static void do_shell(char *path, char **argv) {
 
 	get_slave(ctl);
 
@@ -226,9 +234,9 @@ static void do_shell() {
 	dup2(ctl.slave, STDIN_FILENO);
 	close(ctl.slave);
 
-	exec_shell(ctl);
+	execv(path, argv);
 
-	warn("failed to execute shell");
+	warn("failed to execute shell: %s", path);
 	fail();
 }
 
@@ -260,15 +268,23 @@ static void get_fifo() {
 }
 
 int main(int argc, char **argv) {
+	char *exec_path;
+	char **exec_argv;
 
 	if (argc < 2) {
 		err(EXIT_FAILURE, "not enough arguments");
 	}
 	ctl.source_name = argv[1];
 
-	get_fifo(&ctl);
+	if (get_exec_params(&exec_path, &exec_argv, ctl.source_name) < 0) {
+		free(exec_path);
+		free(exec_argv);
+		err(EXIT_FAILURE, "%s: missing shebang", ctl.source_name);
+	}
 
-	get_master(&ctl);
+	get_fifo();
+
+	get_master();
 
 	fflush(stdout);
 	ctl.child = fork();
@@ -279,7 +295,7 @@ int main(int argc, char **argv) {
 		fail();
 		break;
 	case 0:	 // child process
-		do_shell();
+		do_shell(exec_path, exec_argv);
 		break;
 	default:	// parent process
 		do_readline();
