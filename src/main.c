@@ -65,6 +65,33 @@ void command_do(const char *args) {
 	fdatasync(ctl.fifo_fd);
 }
 
+void command_run() {
+	FILE *fp;
+	char *line;
+	size_t len = 0;
+
+	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
+		warn("failed to open %s", ctl.source_name);
+		return;
+	}
+
+	while (true) {
+		int read_size;
+
+		read_size = getline(&line, &len, fp);
+		if (read_size < 0) {
+			break;
+		}
+
+		if (write(ctl.fifo_fd, line, read_size) < 0) {
+			warn("failed to write to fd");
+			fail();
+		}
+		fdatasync(ctl.fifo_fd);
+	}
+	free(line);
+}
+
 void readline_handler(char *line) {
 	add_history(line);
 
@@ -88,6 +115,7 @@ void readline_handler(char *line) {
 	} else if (command_eq(line, "step")) {
 	} else if (command_eq(line, "print")) {
 	} else if (command_eq(line, "run")) {
+		command_run();
 	} else if (command_eq(line, "backtrace")) {
 	} else {
 		const char *rem = strchr(line, ' ');
