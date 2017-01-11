@@ -110,8 +110,6 @@ void finish(int signum) {
 }
 
 void do_readline() {
-	char *line;
-	int status;
 
 	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
 	if (ctl.fifo_fd < 0) {
@@ -129,7 +127,6 @@ void do_readline() {
 
 	while (1) {
 		int ret;
-		int status;
 
 		ret = poll(pfd, 1, -1);
 		if (ret < 0) {
@@ -277,8 +274,6 @@ int main(int argc, char **argv) {
 	ctl.source_name = argv[1];
 
 	if (get_exec_params(&exec_path, &exec_argv, ctl.source_name) < 0) {
-		free(exec_path);
-		free(exec_argv);
 		err(EXIT_FAILURE, "%s: missing shebang", ctl.source_name);
 	}
 
