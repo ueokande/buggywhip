@@ -1,7 +1,6 @@
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <libgen.h>
 #include <limits.h>
 #include <paths.h>
 #include <poll.h>
@@ -16,10 +15,9 @@
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <sys/signalfd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 
+#include "fifo.h"
 #include "strutil.h"
 
 struct bgw_control {
@@ -30,7 +28,7 @@ struct bgw_control {
 	struct winsize win;		/* terminal window size */
 
 	char *source_name;
-	char fifo_name[PATH_MAX + 1];
+	struct bgw_fifo fifo;
 	int fifo_fd;
 
 	int die;
@@ -45,14 +43,14 @@ void finalize_slave(int signum);
 void do_readline();
 static void get_slave();
 static void get_master();
-static void create_fifo();
-static void remove_fifo();
 
 void done() {
 	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl.attrs);
 	kill(ctl.child, SIGTERM);
 
-	remove_fifo();
+	if (remove_fifo(ctl.fifo)) {
+		err(EXIT_FAILURE, "failed to remove fifo");
+	}
 	exit(EXIT_SUCCESS);
 }
 
@@ -152,10 +150,12 @@ void command_run() {
 		++argc;
 	}
 	argv[0] = ctl.source_name;
-	argv[argc + 1] = ctl.fifo_name;
+	argv[argc + 1] = ctl.fifo.name;
 	argv[argc + 2] = NULL;
 
-	create_fifo();
+	if (create_fifo(&ctl.fifo) < 0) {
+		warn("failed to create fifo");
+	}
 
 	ctl.child = open_subshell(first_line, argv);
 
@@ -164,9 +164,9 @@ void command_run() {
 		fail();
 	}
 
-	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
+	ctl.fifo_fd = open(ctl.fifo.name, O_WRONLY);
 	if (ctl.fifo_fd < 0) {
-		warn("failed to open fifo");
+		warn("failed to open fifo: %s", ctl.fifo.name);
 		fail();
 	}
 
@@ -255,36 +255,6 @@ static void get_master() {
 		warn("openpty failed");
 		fail();
 	}
-}
-
-static void create_fifo() {
-	char tmpdir[PATH_MAX + 1] = "/tmp/bgw-XXXXXX";
-
-	if (mkdtemp(tmpdir) == NULL) {
-		warn("mkdtemp failed");
-		fail();
-	}
-
-	sprintf(ctl.fifo_name, "%s/%s", tmpdir, "script");
-
-	if (mkfifo(ctl.fifo_name, S_IWUSR | S_IRUSR) < 0) {
-		warn("mkfifoat failed");
-		fail();
-	}
-}
-
-static void remove_fifo() {
-	const char *tmpdir;
-
-	if (unlink(ctl.fifo_name)) {
-		warn("unlink failed");
-	}
-
-	tmpdir = dirname(ctl.fifo_name);
-	if (rmdir(tmpdir)) {
-		warn("rmdir failed");
-	}
-
 }
 
 int main(int argc, char **argv) {
