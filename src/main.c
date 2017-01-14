@@ -32,23 +32,27 @@ struct bgw_control {
 	char *source_name;
 	char fifo_name[PATH_MAX + 1];
 	int fifo_fd;
+
+	int die;
 } ctl = {};
 
-void done() {
-	const char *tmpdir;
+void done();
+void fail();
+void command_do(const char *args);
+void command_run();
+void readline_handler(char *line);
+void finalize_slave(int signum);
+void do_readline();
+static void get_slave();
+static void get_master();
+static void create_fifo();
+static void remove_fifo();
 
+void done() {
 	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl.attrs);
 	kill(ctl.child, SIGTERM);
 
-	if (unlink(ctl.fifo_name)) {
-		warn("unlink failed");
-	}
-
-	tmpdir = dirname(ctl.fifo_name);
-	if (rmdir(tmpdir)) {
-		warn("rmdir failed");
-	}
-
+	remove_fifo();
 	exit(EXIT_SUCCESS);
 }
 
@@ -65,16 +69,108 @@ void command_do(const char *args) {
 	fdatasync(ctl.fifo_fd);
 }
 
+pid_t open_subshell(char *path, char **argv) {
+	get_master();
+
+	pid_t pid = fork();
+
+	// in parent process or fork failed, pid != 0
+	if (pid == 0) {
+		// child process
+		get_slave(ctl);
+
+		close(ctl.master);
+
+		dup2(ctl.slave, STDIN_FILENO);
+		close(ctl.slave);
+
+		execv(path, argv);
+
+		warn("failed to execute shell: %s", path);
+		fail();
+	}
+
+	return pid;
+}
+
+int close_subshell() {
+	return 0;
+}
+
 void command_run() {
 	FILE *fp;
-	char *line;
+
 	size_t len = 0;
+	ssize_t read_size;
+	char *p;
+	char *first_line;
+	char *line;
+	int i;
+
+	int argc;
+	char **argv;
 
 	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
 		warn("failed to open %s", ctl.source_name);
 		return;
 	}
 
+	read_size = getline(&first_line, &len, fp);
+	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
+		fprintf(stderr, "%s: missing shebang", ctl.source_name);
+		free(first_line);
+		return;
+	}
+
+	// Trim first #! and last '\n'
+	if (first_line[read_size - 1] == '\n') {
+		first_line[read_size - 1] = '\0';
+		--read_size;
+	}
+	p = trim_head(first_line + 2);
+	read_size -= p - first_line;
+	first_line = p;
+
+	for (argc = 0, i = 0; i < read_size; ++i) {
+		if (!isblank(first_line[i])) {
+			continue;
+		}
+		i = trim_head(&first_line[i]) - first_line;
+		++argc;
+	}
+	argv = malloc(sizeof(char*) * (argc + 3));
+
+	for (argc = 0, i = 0; i < read_size; ++i) {
+		if (!isblank(first_line[i])) {
+			continue;
+		}
+		while (isblank(first_line[i])) {
+			first_line[i] = '\0';
+			++i;
+		}
+		argv[argc + 1] = &first_line[i];
+		++argc;
+	}
+	argv[0] = ctl.source_name;
+	argv[argc + 1] = ctl.fifo_name;
+	argv[argc + 2] = NULL;
+
+	create_fifo();
+
+	ctl.child = open_subshell(first_line, argv);
+
+	if (ctl.child < 0) {
+		warn("fork failed");
+		fail();
+	}
+
+	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
+	if (ctl.fifo_fd < 0) {
+		warn("failed to open fifo");
+		fail();
+	}
+
+	len = 0;
 	while (true) {
 		int read_size;
 
@@ -90,6 +186,9 @@ void command_run() {
 		fdatasync(ctl.fifo_fd);
 	}
 	free(line);
+
+	close(ctl.fifo_fd);
+	ctl.fifo_fd = -1;
 }
 
 void readline_handler(char *line) {
@@ -102,6 +201,7 @@ void readline_handler(char *line) {
 		// Do nothing
 	} else if (command_eq(line, "quit")) {
 		rl_callback_handler_remove ();
+		ctl.die = 1;
 	} else if (command_eq(line, "do")) {
 		const char *args = strchr(line, ' ');
 		if (args != NULL) {
@@ -129,7 +229,7 @@ void readline_handler(char *line) {
 	free(line);
 }
 
-void finish(int signum) {
+void finalize_slave(int signum) {
 	int status;
 	if (waitpid(ctl.child, &status, 0) < 0) {
 		warn("failed to waitpid");
@@ -139,130 +239,11 @@ void finish(int signum) {
 
 void do_readline() {
 
-	ctl.fifo_fd = open(ctl.fifo_name, O_WRONLY);
-	if (ctl.fifo_fd < 0) {
-		warn("failed to open fifo");
-		fail();
-	}
-
-	struct pollfd pfd[] = {
-		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
-	};
-
-	rl_callback_handler_install ("> ", readline_handler);
-
-	signal(SIGCHLD, finish);
-
-	while (1) {
-		int ret;
-
-		ret = poll(pfd, 1, -1);
-		if (ret < 0) {
-			if (errno == EINTR) {
-				break;
-			}
-
-			warn("poll failed");
-			fail();
-		}
-
-		if (pfd[0].revents == 0) {
-			continue;
-		}
-
-		rl_callback_read_char ();
-	}
-
-	close(ctl.fifo_fd);
-
-	done();
 }
 
 static void get_slave() {
 	setsid();
 	ioctl(ctl.slave, TIOCSCTTY, 0);
-}
-
-/*
- * get_exec_params() parses a shebang in filename, and returns its executable
- * path and argv.  argv[0] is set filename, and last element of argv is set
- * NULL in order to pass to execv(2).
- *
- * User must free returned path and argv on successed.
- *
- * The function returns zero on successful, otherwise returns -1.
- */
-static int get_exec_params(char **path, char ***argv, const char *filename) {
-	FILE *fp;
-	ssize_t read_size;
-	size_t len = 0;
-	char *p;
-	int argc;
-	int i;
-
-	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
-		warn("cannot open %s", ctl.source_name);
-		fail();
-	}
-	read_size = getline(path, &len, fp);
-	fclose(fp);
-
-	// Check if first line starts with "#!"
-	if (read_size < 2 || (*path)[0] != '#' || (*path)[1] != '!') {
-		fprintf(stderr, "%s: missing shebang", filename);
-		free(path);
-		return -1;
-	}
-
-	// Trim first #! and last '\n'
-	if ((*path)[read_size - 1] == '\n') {
-		(*path)[read_size - 1] = '\0';
-		--read_size;
-	}
-	p = trim_head(*path + 2);
-	read_size -= p - *path;
-	*path = p;
-
-	for (argc = 0, i = 0; i < read_size; ++i) {
-		if (!isblank((*path)[i])) {
-			continue;
-		}
-		i = trim_head(&(*path)[i]) - *path;
-		++argc;
-	}
-	*argv = malloc(sizeof(char*) * (argc + 3));
-
-	for (argc = 0, i = 0; i < read_size; ++i) {
-		if (!isblank((*path)[i])) {
-			continue;
-		}
-		while (isblank((*path)[i])) {
-			(*path)[i] = '\0';
-			++i;
-		}
-		(*argv)[argc + 1] = &(*path)[i];
-		++argc;
-	}
-	(*argv)[0] = ctl.source_name;
-	(*argv)[argc + 1] = ctl.fifo_name;
-	(*argv)[argc + 2] = NULL;
-
-	return 0;
-}
-
-static void do_shell(char *path, char **argv) {
-
-	get_slave(ctl);
-
-	close(ctl.master);
-
-	dup2(ctl.slave, STDIN_FILENO);
-	close(ctl.slave);
-
-	execv(path, argv);
-
-	warn("failed to execute shell: %s", path);
-	fail();
 }
 
 static void get_master() {
@@ -276,7 +257,7 @@ static void get_master() {
 	}
 }
 
-static void get_fifo() {
+static void create_fifo() {
 	char tmpdir[PATH_MAX + 1] = "/tmp/bgw-XXXXXX";
 
 	if (mkdtemp(tmpdir) == NULL) {
@@ -292,38 +273,55 @@ static void get_fifo() {
 	}
 }
 
-int main(int argc, char **argv) {
-	char *exec_path;
-	char **exec_argv;
+static void remove_fifo() {
+	const char *tmpdir;
 
+	if (unlink(ctl.fifo_name)) {
+		warn("unlink failed");
+	}
+
+	tmpdir = dirname(ctl.fifo_name);
+	if (rmdir(tmpdir)) {
+		warn("rmdir failed");
+	}
+
+}
+
+int main(int argc, char **argv) {
 	if (argc < 2) {
 		err(EXIT_FAILURE, "not enough arguments");
 	}
 	ctl.source_name = argv[1];
 
-	if (get_exec_params(&exec_path, &exec_argv, ctl.source_name) < 0) {
-		err(EXIT_FAILURE, "%s: missing shebang", ctl.source_name);
+	struct pollfd pfd[] = {
+		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
+	};
+
+	rl_callback_handler_install ("> ", readline_handler);
+
+	signal(SIGCHLD, finalize_slave);
+
+	while (!ctl.die) {
+		int ret;
+
+		ret = poll(pfd, 1, -1);
+		if (ret < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+
+			warn("poll failed");
+			fail();
+		}
+
+		if (pfd[0].revents == 0) {
+			continue;
+		}
+
+		rl_callback_read_char ();
 	}
 
-	get_fifo();
-
-	get_master();
-
-	fflush(stdout);
-	ctl.child = fork();
-
-	switch (ctl.child) {
-	case -1:
-		warn("fork failed");
-		fail();
-		break;
-	case 0:	 // child process
-		do_shell(exec_path, exec_argv);
-		break;
-	default:	// parent process
-		do_readline();
-		break;
-	}
+	done();
 
 	return EXIT_FAILURE;
 }
