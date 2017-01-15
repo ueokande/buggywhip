@@ -6,9 +6,9 @@ TEST_FILES=$(shell find tests -name '*.c' -o -name '*.h')
 
 .PHONY: bgw
 bgw: $(SOURCE_FILES) src/main.c
-	cc -obgw src/*.c -lreadline -lutil
+	cc -obgw src/*.c -lreadline -lutil -Wall
 
 .PHONY: check
 check: $(SOURCE_FILES) $(TEST_FILES)
-	cc -ocheck src/fifo.c tests/runner.c -Isrc -lcheck -lreadline -lutil
+	cc -ocheck src/fifo.c tests/runner.c -Isrc -lcheck -lreadline -lutil -Wall
 	./check

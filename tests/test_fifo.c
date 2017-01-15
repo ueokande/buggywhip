@@ -1,5 +1,6 @@
 #include <check.h>
 #include <libgen.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -36,6 +37,6 @@ START_TEST(test_remove_fifo) {
         dirname(dir);
 
         ck_assert(stat(fifo.name, &fifo_st) < 0);
-        ck_assert(stat(dir, NULL) < 0);
+        ck_assert(stat(dir, &dir_st) < 0);
 }
 END_TEST

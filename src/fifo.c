@@ -1,6 +1,7 @@
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,13 +26,15 @@ int create_fifo(struct bgw_fifo *fifo) {
 }
 
 int remove_fifo(struct bgw_fifo *fifo) {
-	char *dir;
+	char dir[256];
 
 	if (unlink(fifo->name)) {
 		return -1;
 	}
 
-	dir = dirname(fifo->name);
+	strcpy(dir, fifo->name);
+
+	dirname(dir);
 	if (rmdir(dir)) {
 		return -1;
 	}
