@@ -32,11 +32,14 @@ struct bgw_control {
 	int fifo_fd;
 
 	int die;
+
+	int last_list_line;
 } ctl = {};
 
 void done();
 void fail();
 void command_do(const char *args);
+void command_list(const char *args);
 void command_run();
 void readline_handler(char *line);
 void finalize_slave(int signum);
@@ -65,6 +68,123 @@ void command_do(const char *args) {
 		fail();
 	}
 	fdatasync(ctl.fifo_fd);
+}
+
+/*
+ * The method finds a word from a file line by line.  The method returns a
+ * number of line which contains the word.
+ */
+int grep_word(const char *word) {
+	FILE *fp;
+	char *line;
+	size_t len = 0;
+	int errsv = 0;
+	int num = 0;
+	size_t word_len;
+
+	word_len = strlen(word);
+
+	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
+		return -1;
+	}
+
+	while(1) {
+		++num;
+		ssize_t read_size;
+		char *found;
+		char before_char, after_char;
+		int separate_start, separate_end;
+
+		read_size = getline(&line, &len, fp);
+		if (read_size < 0) {
+			errsv = errno;
+			num = -1;
+			break;
+		}
+
+		found = (char *)memmem(line, read_size, word, word_len);
+		if (found == NULL) {
+			continue;
+		}
+
+		before_char = *(found - 1);
+		after_char = *(found + word_len);
+
+		separate_start = found == line || (before_char != '_' && !isalnum(before_char));
+		separate_end = found == line || (after_char != '_' && !isalnum(after_char));
+		if (separate_start && separate_end) {
+			break;
+		}
+	}
+
+	free(line);
+	fclose(fp);
+
+	errno = errsv;
+
+	return num;
+}
+
+int digit_number(int value, int base) {
+	int count = 0;
+
+	while(value != 0) {
+		value = value / base;
+		++count;
+	}
+	return count;
+}
+
+void command_list(const char *args) {
+	int lineno_from;
+	FILE *fp;
+	char *line;
+	int lineno_width;
+	size_t len = 0;
+	int i;
+
+	if (strlen(args) == 0) {
+		lineno_from = ctl.last_list_line;
+	} else {
+		int num;
+		char *end;
+
+		num = strtol(args, &end, 10);
+		if (*end == '\0') {
+			lineno_from = num;
+		} else {
+			lineno_from = grep_word(args);
+			if (lineno_from < 0) {
+				warn("failed to find a word from \"%s\"", ctl.source_name);
+				return;
+			}
+		}
+	}
+
+	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
+		warn("failed to open: %s", ctl.source_name);
+	}
+
+	lineno_width = digit_number(lineno_from + 10, 10);
+
+	for (i = 1; i <= lineno_from + 10; ++i) {
+		ssize_t read_size;
+		read_size = getline(&line, &len, fp);
+		if (read_size < 0) {
+			i = 0;
+			break;
+		}
+
+		if (i >= lineno_from) {
+			fprintf(stdout, "%*d: %.*s", lineno_width, i, (int)read_size, line);
+		}
+	}
+
+	ctl.last_list_line = i;
+
+	free(line);
+	fclose(fp);
+
 }
 
 pid_t open_subshell(char *path, char **argv) {
@@ -210,6 +330,13 @@ void readline_handler(char *line) {
 	} else if (command_eq(line, "next")) {
 	} else if (command_eq(line, "help")) {
 	} else if (command_eq(line, "list")) {
+		char *args = strchr(line, ' ');
+		if (args == NULL) {
+			args = "";
+		} else {
+			args = trim_head(args);
+		}
+		command_list(args);
 	} else if (command_eq(line, "continue")) {
 	} else if (command_eq(line, "edit")) {
 	} else if (command_eq(line, "step")) {
