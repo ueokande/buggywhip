@@ -18,7 +18,7 @@
 #include <sys/wait.h>
 
 #include "fifo.h"
-#include "strutil.h"
+#include "util.h"
 
 struct bgw_control {
 	int master;			/* pseudoterminal master file descriptor */
@@ -123,16 +123,6 @@ int grep_word(const char *word) {
 	errno = errsv;
 
 	return num;
-}
-
-int digit_number(int value, int base) {
-	int count = 0;
-
-	while(value != 0) {
-		value = value / base;
-		++count;
-	}
-	return count;
 }
 
 void command_list(const char *args) {

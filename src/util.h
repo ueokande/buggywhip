@@ -1,5 +1,5 @@
-#ifndef STRUTIL_H
-#define STRUTIL_H
+#ifndef UTIL_H
+#define UTIL_H
 
 #include <string.h>
 #include <ctype.h>
@@ -20,6 +20,19 @@ static inline char *trim_head(char *str) {
 		++str;
 	}
 	return str;
+}
+
+/*
+ * Counts a number of the digit from an integer.
+ */
+int digit_number(int value, int base) {
+	int count = 0;
+
+	while(value != 0) {
+		value = value / base;
+		++count;
+	}
+	return count;
 }
 
 #endif
