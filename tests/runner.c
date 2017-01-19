@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "test_fifo.c"
 #include "test_fileutil.c"
+#include "test_bitset.c"
 
 int main(void) {
 
@@ -11,18 +12,22 @@ int main(void) {
     Suite *s1 = suite_create("Statsite");
     TCase *tc1 = tcase_create("fifo");
     TCase *tc2 = tcase_create("fileutil");
+    TCase *tc3 = tcase_create("bitset");
     SRunner *sr = srunner_create(s1);
 
-    // Add the fifo tests
     suite_add_tcase(s1, tc1);
     tcase_add_test(tc1, test_create_fifo);
     tcase_add_test(tc1, test_remove_fifo);
 
-    // Add the fifo tests
     suite_add_tcase(s1, tc2);
-    tcase_add_test(tc1, test_fileutil_strwordn);
-    tcase_add_test(tc1, test_fileutil_grep_word);
-    tcase_add_test(tc1, test_fileutil_count_lines);
+    tcase_add_test(tc2, test_fileutil_strwordn);
+    tcase_add_test(tc2, test_fileutil_grep_word);
+    tcase_add_test(tc2, test_fileutil_count_lines);
+
+    suite_add_tcase(s1, tc3);
+    tcase_add_test(tc3, test_bitset_new);
+    tcase_add_test(tc3, test_bitset_set);
+    tcase_add_test(tc3, test_bitset_reset);
 
     srunner_run_all(sr, CK_ENV);
     nf = srunner_ntests_failed(sr);
