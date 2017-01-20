@@ -21,6 +21,7 @@
 #include "fileutil.h"
 #include "fifo.h"
 #include "util.h"
+#include "bitset.h"
 
 struct bgw_control {
 	struct subshell_t subshell;
@@ -32,6 +33,7 @@ struct bgw_control {
 	int die;
 
 	int last_list_line;
+	struct bitset *breakpoints;
 } ctl = {};
 
 void done();
@@ -44,6 +46,8 @@ void finalize_slave(int signum);
 
 void done() {
 	kill(ctl.subshell.pid, SIGTERM);
+
+	bitset_delete(ctl.breakpoints);
 
 	if (remove_fifo(ctl.fifo)) {
 		err(EXIT_FAILURE, "failed to remove fifo");
@@ -114,6 +118,30 @@ void command_list(const char *args) {
 	free(line);
 	fclose(fp);
 
+}
+
+void command_break(const char *args) {
+	int lineno;
+
+	if (strlen(args) == 0) {
+		lineno = ctl.last_list_line;
+	} else {
+		int num;
+		char *end;
+
+		num = strtol(args, &end, 10);
+		if (*end == '\0') {
+			lineno = num;
+		} else {
+			lineno = grep_word(args, ctl.source_name);
+			if (lineno < 0) {
+				warn("failed to find a word from \"%s\"", ctl.source_name);
+				return;
+			}
+		}
+	}
+	bitset_set(ctl.breakpoints, lineno);
+	printf("Breakpoint at line %d\n", lineno);
 }
 
 void command_run() {
@@ -226,6 +254,14 @@ void readline_handler(char *line) {
 		if (args != NULL) {
 			command_do(++args);
 		}
+	} else if (command_eq(line, "break")) {
+		char *args = strchr(line, ' ');
+		if (args == NULL) {
+			args = "";
+		} else {
+			args = trim_head(args);
+		}
+		command_break(args);
 	} else if (command_eq(line, "next")) {
 	} else if (command_eq(line, "help")) {
 	} else if (command_eq(line, "list")) {
@@ -264,10 +300,17 @@ void finalize_slave(int signum) {
 }
 
 int main(int argc, char **argv) {
+	ssize_t lines;
+
 	if (argc < 2) {
 		err(EXIT_FAILURE, "not enough arguments");
 	}
 	ctl.source_name = argv[1];
+	lines = count_lines(ctl.source_name);
+	if (lines < 0) {
+		err(EXIT_FAILURE, "failed to open source file");
+	}
+	ctl.breakpoints = bitset_new(lines);
 
 	struct pollfd pfd[] = {
 		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
