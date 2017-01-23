@@ -44,7 +44,6 @@ void command_list(const char *args);
 void command_run();
 void readline_handler(char *line);
 void finalize_slave(int signum);
-void do_readline();
 static void get_slave();
 static void get_master();
 
@@ -298,10 +297,6 @@ void finalize_slave(int signum) {
 		warn("failed to waitpid");
 	}
 	fprintf(stderr, "shell terminated with %d\n", status);
-}
-
-void do_readline() {
-
 }
 
 static void get_slave() {
