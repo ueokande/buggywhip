@@ -21,6 +21,7 @@ int main(void) {
     // Add the fifo tests
     suite_add_tcase(s1, tc2);
     tcase_add_test(tc1, test_fileutil_strwordn);
+    tcase_add_test(tc1, test_fileutil_grep_word);
 
     srunner_run_all(sr, CK_ENV);
     nf = srunner_ntests_failed(sr);

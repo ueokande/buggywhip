@@ -28,4 +28,46 @@ const char *strwordn(const char *str, ssize_t line_len, const char *word, size_t
 	return NULL;
 }
 
+/*
+ * The method finds a word from a file line by line.  The method returns a
+ * number of line which contains the word.
+ */
+static int grep_word(const char *word, const char *filename) {
+	FILE *fp;
+	char *line;
+	size_t len = 0;
+	int errsv = 0;
+	int num = -1;
+	size_t word_len;
+
+	word_len = strlen(word);
+
+	if ((fp = fopen(filename, "r")) == NULL) {
+		return -1;
+	}
+
+	while(1) {
+		++num;
+		ssize_t read_size;
+
+		read_size = getline(&line, &len, fp);
+		if (read_size < 0) {
+			errsv = errno;
+			num = -1;
+			break;
+		}
+
+		if (strwordn(line, read_size, word, word_len) != NULL) {
+			break;
+		}
+	}
+
+	free(line);
+	fclose(fp);
+
+	errno = errsv;
+
+	return num;
+}
+
 #endif
