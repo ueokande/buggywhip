@@ -17,16 +17,13 @@
 #include <sys/signalfd.h>
 #include <sys/wait.h>
 
+#include "subshell.h"
 #include "fileutil.h"
 #include "fifo.h"
 #include "util.h"
 
 struct bgw_control {
-	int master;			/* pseudoterminal master file descriptor */
-	int slave;			/* pseudoterminal slave file descriptor */
-	pid_t child;			/* child pid */
-	struct termios attrs;		/* slave terminal runtime attributes */
-	struct winsize win;		/* terminal window size */
+	struct subshell_t subshell;
 
 	char *source_name;
 	struct bgw_fifo fifo;
@@ -44,12 +41,9 @@ void command_list(const char *args);
 void command_run();
 void readline_handler(char *line);
 void finalize_slave(int signum);
-static void get_slave();
-static void get_master();
 
 void done() {
-	tcsetattr(STDIN_FILENO, TCSADRAIN, &ctl.attrs);
-	kill(ctl.child, SIGTERM);
+	kill(ctl.subshell.pid, SIGTERM);
 
 	if (remove_fifo(ctl.fifo)) {
 		err(EXIT_FAILURE, "failed to remove fifo");
@@ -122,34 +116,6 @@ void command_list(const char *args) {
 
 }
 
-pid_t open_subshell(char *path, char **argv) {
-	get_master();
-
-	pid_t pid = fork();
-
-	// in parent process or fork failed, pid != 0
-	if (pid == 0) {
-		// child process
-		get_slave(ctl);
-
-		close(ctl.master);
-
-		dup2(ctl.slave, STDIN_FILENO);
-		close(ctl.slave);
-
-		execv(path, argv);
-
-		warn("failed to execute shell: %s", path);
-		fail();
-	}
-
-	return pid;
-}
-
-int close_subshell() {
-	return 0;
-}
-
 void command_run() {
 	FILE *fp;
 
@@ -212,10 +178,8 @@ void command_run() {
 		warn("failed to create fifo");
 	}
 
-	ctl.child = open_subshell(first_line, argv);
-
-	if (ctl.child < 0) {
-		warn("fork failed");
+	if (open_subshell(&ctl.subshell, first_line, argv) < 0) {
+		warn("failed to open sub-shell");
 		fail();
 	}
 
@@ -292,27 +256,11 @@ void readline_handler(char *line) {
 }
 
 void finalize_slave(int signum) {
-	int status;
-	if (waitpid(ctl.child, &status, 0) < 0) {
+	int status = close_subshell(&ctl.subshell);
+	if (status < 0) {
 		warn("failed to waitpid");
 	}
 	fprintf(stderr, "shell terminated with %d\n", status);
-}
-
-static void get_slave() {
-	setsid();
-	ioctl(ctl.slave, TIOCSCTTY, 0);
-}
-
-static void get_master() {
-	if (tcgetattr(STDIN_FILENO, &ctl.attrs) != 0) {
-		err(EXIT_FAILURE, "failed to get terminal attributes");
-	}
-	ioctl(STDIN_FILENO, TIOCGWINSZ, (char *)&ctl.win);
-	if (openpty(&ctl.master, &ctl.slave, NULL, &ctl.attrs, &ctl.win)) {
-		warn("openpty failed");
-		fail();
-	}
 }
 
 int main(int argc, char **argv) {
