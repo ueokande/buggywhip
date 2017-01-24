@@ -22,6 +22,7 @@ int main(void) {
     suite_add_tcase(s1, tc2);
     tcase_add_test(tc1, test_fileutil_strwordn);
     tcase_add_test(tc1, test_fileutil_grep_word);
+    tcase_add_test(tc1, test_fileutil_count_lines);
 
     srunner_run_all(sr, CK_ENV);
     nf = srunner_ntests_failed(sr);

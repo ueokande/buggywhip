@@ -70,4 +70,26 @@ static int grep_word(const char *word, const char *filename) {
 	return num;
 }
 
+/*
+ * count the number of lines in source file.  The last line is counted even if
+ * the line does not end with a break-line.
+ */
+ssize_t count_lines(const char *filename) {
+	ssize_t count = 0;
+	FILE *fp;
+	size_t len = 0;
+	char *line;
+
+	if ((fp = fopen(filename, "r")) == NULL) {
+		return -1;
+	}
+
+	while(getline(&line, &len, fp) != -1) {
+		++count;
+	}
+
+	fclose(fp);
+	return count;
+}
+
 #endif

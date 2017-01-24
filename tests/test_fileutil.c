@@ -59,3 +59,33 @@ START_TEST(test_fileutil_grep_word) {
 	}
 }
 END_TEST
+
+START_TEST(test_fileutil_count_lines) {
+	struct {
+		char *data;
+		int count;
+	} cases[] = {
+		{"abc\ndef\nxyz\n", 3},
+		{"abc\ndef\nxyz", 3},
+		{"abc", 1},
+		{"", 0},
+	};
+	int i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+		char name[] = "/tmp/bgw-test-XXXXXX*";
+		name[sizeof(name) - 2] = '\0';
+		int fd = mkstemp(name);
+		ssize_t count;
+
+		write(fd, cases[i].data, strlen(cases[i].data));
+		close(fd);
+
+		count = count_lines(name);
+
+		ck_assert_int_eq(count, cases[i].count);
+
+		unlink(name);
+	}
+}
+END_TEST
