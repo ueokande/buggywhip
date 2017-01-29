@@ -19,7 +19,7 @@ int get_master(int *master, int *slave, struct termios *attrs) {
 	struct winsize win;
 
 	if (tcgetattr(STDIN_FILENO, attrs) != 0) {
-		err(EXIT_FAILURE, "failed to get terminal attributes");
+		return -1;
 	}
 
 	ioctl(STDIN_FILENO, TIOCGWINSZ, (char *)&win);
@@ -55,18 +55,9 @@ int open_subshell(struct subshell_t *subshell, char *path, char **argv) {
 
 		execv(path, argv);
 
-		warn("failed to execute shell: %s", path);
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 
-	return 0;
-}
-
-int suspend_subshell(const struct subshell_t *subshell) {
-	return 0;
-}
-
-int resume_subshell(const struct subshell_t *subshell) {
 	return 0;
 }
 
