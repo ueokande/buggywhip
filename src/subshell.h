@@ -1,7 +1,13 @@
 #ifndef SUBSHELL_H
 #define SUBSHELL_H
 
+#include <pty.h>
+#include <stdlib.h>
+#include <termios.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 struct subshell_t {
 	int master;			/* pseudoterminal master file descriptor */

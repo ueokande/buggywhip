@@ -4,18 +4,15 @@
 #include <limits.h>
 #include <paths.h>
 #include <poll.h>
-#include <pty.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
 #include <unistd.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 #include <sys/signalfd.h>
-#include <sys/wait.h>
 
 #include "subshell.h"
 #include "fileutil.h"
