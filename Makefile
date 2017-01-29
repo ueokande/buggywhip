@@ -10,5 +10,5 @@ bgw: $(SOURCE_FILES) src/main.c
 
 .PHONY: check
 check: $(SOURCE_FILES) $(TEST_FILES)
-	cc -ocheck src/fifo.c tests/runner.c -Isrc -lcheck -lreadline -lutil -Wall
+	cc -ocheck src/fifo.c tests/runner.c -Isrc -lreadline -lutil -Wall `pkg-config --cflags --libs check`
 	./check
