@@ -134,7 +134,7 @@ void command_break(const char *args) {
 
 		num = strtol(args, &end, 10);
 		if (*end == '\0') {
-			lineno = num;
+			lineno = num - 1;
 		} else {
 			lineno = grep_word(args, ctl.source_name);
 			if (lineno < 0) {
@@ -144,7 +144,7 @@ void command_break(const char *args) {
 		}
 	}
 	bitset_set(ctl.breakpoints, lineno);
-	printf("Breakpoint at line %d\n", lineno);
+	printf("Breakpoint at line %d\n", lineno + 1);
 }
 
 void command_continue() {
