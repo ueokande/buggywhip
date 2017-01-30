@@ -24,6 +24,7 @@ struct bgw_control {
 	struct subshell_t subshell;
 
 	char *source_name;
+	FILE *source_file;
 	struct bgw_fifo fifo;
 	int fifo_fd;
 
@@ -31,12 +32,14 @@ struct bgw_control {
 
 	int last_list_line;
 	struct bitset *breakpoints;
+	int program_counter;
 } ctl = {};
 
 void done();
 void fail();
 void command_do(const char *args);
 void command_list(const char *args);
+void command_continue();
 void command_run();
 void readline_handler(char *line);
 void finalize_slave(int signum);
@@ -141,18 +144,61 @@ void command_break(const char *args) {
 	printf("Breakpoint at line %d\n", lineno);
 }
 
+void command_continue() {
+	char *line;
+	size_t len = 0;
+
+	if (ctl.source_file == NULL) {
+		fprintf(stderr, "not running a script\n");
+		return;
+	}
+
+	while (true) {
+		int read_size;
+		read_size = getline(&line, &len, ctl.source_file);
+		if (read_size < 0) {
+			break;
+		}
+
+
+		if (write(ctl.fifo_fd, line, read_size) < 0) {
+			warn("failed to write to fd");
+			fail();
+		}
+		fdatasync(ctl.fifo_fd);
+
+		++ctl.program_counter;
+		if (bitset_test(ctl.breakpoints, ctl.program_counter)) {
+			fprintf(stderr, "Stopped at %d\n", ctl.program_counter);
+			free(line);
+			return;
+		}
+	}
+
+	free(line);
+
+	fclose(ctl.source_file);
+	ctl.source_file = 0;
+
+	close(ctl.fifo_fd);
+	ctl.fifo_fd = -1;
+}
+
 void command_run() {
 	FILE *fp;
-
 	size_t len = 0;
 	ssize_t read_size;
 	char *p;
 	char *first_line;
-	char *line;
 	int i;
 
 	int argc;
 	char **argv;
+
+	if (ctl.source_file != NULL) {
+		fclose(ctl.source_file);
+		fprintf(stderr, "re-run from the beginning\n");
+	}
 
 	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
 		warn("failed to open %s", ctl.source_name);
@@ -165,6 +211,7 @@ void command_run() {
 		free(first_line);
 		return;
 	}
+	fclose(fp);
 
 	// Trim first #! and last '\n'
 	if (first_line[read_size - 1] == '\n') {
@@ -214,25 +261,13 @@ void command_run() {
 		fail();
 	}
 
-	len = 0;
-	while (true) {
-		int read_size;
-
-		read_size = getline(&line, &len, fp);
-		if (read_size < 0) {
-			break;
-		}
-
-		if (write(ctl.fifo_fd, line, read_size) < 0) {
-			warn("failed to write to fd");
-			fail();
-		}
-		fdatasync(ctl.fifo_fd);
+	if ((ctl.source_file = fopen(ctl.source_name, "r")) == NULL) {
+		warn("failed to open %s", ctl.source_name);
+		return;
 	}
-	free(line);
+	ctl.program_counter = 0;
 
-	close(ctl.fifo_fd);
-	ctl.fifo_fd = -1;
+	command_continue();
 }
 
 void readline_handler(char *line) {
@@ -270,6 +305,7 @@ void readline_handler(char *line) {
 		}
 		command_list(args);
 	} else if (command_eq(line, "continue")) {
+		command_continue();
 	} else if (command_eq(line, "edit")) {
 	} else if (command_eq(line, "step")) {
 	} else if (command_eq(line, "print")) {
@@ -286,6 +322,7 @@ void readline_handler(char *line) {
 	}
 
 	free(line);
+	line = 0;
 }
 
 void finalize_slave(int signum) {
