@@ -24,7 +24,7 @@ struct bgw_control {
 	struct subshell_t subshell;
 
 	char *source_name;
-	FILE *source_file;
+	int source_fd;
 	struct bgw_fifo fifo;
 	int fifo_fd;
 
@@ -33,7 +33,10 @@ struct bgw_control {
 	int last_list_line;
 	struct bitset *breakpoints;
 	int program_counter;
-} ctl = {};
+} ctl = {
+	.source_fd = -1,
+	.fifo_fd = -1,
+};
 
 void done();
 void fail();
@@ -147,15 +150,18 @@ void command_break(const char *args) {
 void command_continue() {
 	char *line;
 	size_t len = 0;
+	FILE *fp;
 
-	if (ctl.source_file == NULL) {
+	if (ctl.source_fd < 0) {
 		fprintf(stderr, "not running a script\n");
 		return;
 	}
 
+	fp = fdopen(ctl.source_fd, "r");
+
 	while (true) {
 		int read_size;
-		read_size = getline(&line, &len, ctl.source_file);
+		read_size = getline(&line, &len, fp);
 		if (read_size < 0) {
 			break;
 		}
@@ -177,8 +183,8 @@ void command_continue() {
 
 	free(line);
 
-	fclose(ctl.source_file);
-	ctl.source_file = 0;
+	close(ctl.source_fd);
+	ctl.source_fd = -1;
 
 	close(ctl.fifo_fd);
 	ctl.fifo_fd = -1;
@@ -195,8 +201,8 @@ void command_run() {
 	int argc;
 	char **argv;
 
-	if (ctl.source_file != NULL) {
-		fclose(ctl.source_file);
+	if (ctl.source_fd >= 0) {
+		close(ctl.source_fd);
 		fprintf(stderr, "re-run from the beginning\n");
 	}
 
@@ -261,7 +267,8 @@ void command_run() {
 		fail();
 	}
 
-	if ((ctl.source_file = fopen(ctl.source_name, "r")) == NULL) {
+	ctl.source_fd = open(ctl.source_name, O_RDONLY);
+	if (ctl.source_fd < 0) {
 		warn("failed to open %s", ctl.source_name);
 		return;
 	}
