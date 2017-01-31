@@ -2,6 +2,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+int write_to_temp(char *template, char *data, size_t count) {
+	int fd = mkstemp(template);
+	write(fd, data, count);
+	close(fd);
+	return 0;
+}
+
 START_TEST(test_fileutil_strwordn) {
 	int i;
 	struct {
@@ -44,13 +51,10 @@ START_TEST(test_fileutil_grep_word) {
 		{"abc\ndef", "abc\ndef", -1},
 	};
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) { 
+		char name[] = "/tmp/bgw-test-XXXXXX\0";
 		int actual;
-		char name[] = "/tmp/bgw-test-XXXXXX*";
-		name[sizeof(name) - 2] = '\0';
-		int fd = mkstemp(name);
 
-		write(fd, cases[i].data, strlen(cases[i].data));
-		close(fd);
+		write_to_temp(name, cases[i].data, strlen(cases[i].data));
 
 		actual = grep_word(cases[i].word, name);
 		ck_assert_int_eq(actual, cases[i].expected_line);
@@ -73,13 +77,10 @@ START_TEST(test_fileutil_count_lines) {
 	int i;
 
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-		char name[] = "/tmp/bgw-test-XXXXXX*";
-		name[sizeof(name) - 2] = '\0';
-		int fd = mkstemp(name);
+		char name[] = "/tmp/bgw-test-XXXXXX\0";
 		ssize_t count;
 
-		write(fd, cases[i].data, strlen(cases[i].data));
-		close(fd);
+		write_to_temp(name, cases[i].data, strlen(cases[i].data));
 
 		count = count_lines(name);
 
@@ -103,14 +104,11 @@ START_TEST(test_fileutil_get_first_line) {
 	int i;
 
 	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
-		char name[] = "/tmp/bgw-test-XXXXXX*";
-		name[sizeof(name) - 2] = '\0';
-		int fd = mkstemp(name);
+		char name[] = "/tmp/bgw-test-XXXXXX\0";
 		char *got_line;
 		ssize_t read_size;
 
-		write(fd, cases[i].data, strlen(cases[i].data));
-		close(fd);
+		write_to_temp(name, cases[i].data, strlen(cases[i].data));
 
 		read_size = get_first_line(&got_line, name);
 
