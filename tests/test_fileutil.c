@@ -89,3 +89,37 @@ START_TEST(test_fileutil_count_lines) {
 	}
 }
 END_TEST
+
+START_TEST(test_fileutil_get_first_line) {
+	struct {
+		char *data;
+		char *first_line;
+		int read_size;
+	} cases[] = {
+		{"abcde\nvwxyz", "abcde", 5},
+		{"abcde\n", "abcde", 5},
+		{"abcde", "abcde", 5},
+	};
+	int i;
+
+	for (i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+		char name[] = "/tmp/bgw-test-XXXXXX*";
+		name[sizeof(name) - 2] = '\0';
+		int fd = mkstemp(name);
+		char *got_line;
+		ssize_t read_size;
+
+		write(fd, cases[i].data, strlen(cases[i].data));
+		close(fd);
+
+		read_size = get_first_line(&got_line, name);
+
+		ck_assert_str_eq(got_line, cases[i].first_line);
+		ck_assert_int_eq(read_size, cases[i].read_size);
+
+		free(got_line);
+
+		unlink(name);
+	}
+}
+END_TEST

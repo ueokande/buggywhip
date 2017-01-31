@@ -92,4 +92,54 @@ ssize_t count_lines(const char *filename) {
 	return count;
 }
 
+/*
+ * Returns first line with read size from a file.  This buffer should be freed
+ * by the user program on successed.  The returned line does not include
+ * new-line character and terminated by null byte even if the first line in
+ * file contains new-line character.
+ *
+ * On success, the function return the number of characters read, excluding the
+ * null byte('\0'), and returns -1 on failure to read a first line.
+ */
+ssize_t get_first_line(char **lineptr, const char *filename) {
+	FILE *fp;
+	size_t len = 0;
+	ssize_t read_size;
+	char *first_line;
+
+	if ((fp = fopen(filename, "r")) == NULL) {
+		return -1;
+	}
+
+	read_size = getline(&first_line, &len, fp);
+	if (read_size < 0) {
+		int errsv = errno;
+		free(first_line);
+		errno = errsv;
+		return -1;
+	}
+
+	if (first_line[read_size - 1] == '\n') {
+		first_line[read_size - 1] = '\0';
+		--read_size;
+	} else {
+		char *tmp = realloc(first_line, read_size + 1);
+		if (tmp == NULL) {
+			int errsv = errno;
+			free(first_line);
+			errno = errsv;
+			return -1;
+		} else {
+			first_line = tmp;
+		}
+		first_line[read_size + 1] = '\0';
+	}
+
+	fclose(fp);
+
+	*lineptr = first_line;
+
+	return read_size;
+}
+
 #endif
