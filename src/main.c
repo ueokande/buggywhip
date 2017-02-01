@@ -191,8 +191,6 @@ void command_continue() {
 }
 
 void command_run() {
-	FILE *fp;
-	size_t len = 0;
 	ssize_t read_size;
 	char *p;
 	char *first_line;
@@ -206,24 +204,17 @@ void command_run() {
 		fprintf(stderr, "re-run from the beginning\n");
 	}
 
-	if ((fp = fopen(ctl.source_name, "r")) == NULL) {
-		warn("failed to open %s", ctl.source_name);
+	read_size = get_first_line(&first_line, ctl.source_name);
+	if (read_size < 2) {
+		warn("failed to load %s", ctl.source_name);
+		free(first_line);
 		return;
-	}
-
-	read_size = getline(&first_line, &len, fp);
-	if (read_size < 2 || first_line[0] != '#' || first_line[1] != '!') {
+	} else if (first_line[0] != '#' || first_line[1] != '!') {
 		fprintf(stderr, "%s: missing shebang", ctl.source_name);
 		free(first_line);
 		return;
 	}
-	fclose(fp);
 
-	// Trim first #! and last '\n'
-	if (first_line[read_size - 1] == '\n') {
-		first_line[read_size - 1] = '\0';
-		--read_size;
-	}
 	p = trim_head(first_line + 2);
 	read_size -= p - first_line;
 	first_line = p;
