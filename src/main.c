@@ -176,7 +176,9 @@ void command_continue() {
 		++ctl.program_counter;
 		if (bitset_test(ctl.breakpoints, ctl.program_counter)) {
 			fprintf(stderr, "Stopped at %d\n", ctl.program_counter);
+
 			free(line);
+			lseek(ctl.source_fd, ftell(fp), SEEK_SET);
 			return;
 		}
 	}
@@ -188,6 +190,8 @@ void command_continue() {
 
 	close(ctl.fifo_fd);
 	ctl.fifo_fd = -1;
+
+	lseek(ctl.source_fd, ftell(fp), SEEK_SET);
 }
 
 void command_run() {
