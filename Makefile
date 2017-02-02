@@ -6,9 +6,9 @@ TEST_FILES=$(shell find tests -name '*.c' -o -name '*.h')
 
 .PHONY: bgw
 bgw: $(SOURCE_FILES) src/main.c
-	cc -obgw src/*.c -lreadline -lutil -Wall
+	cc -obgw src/*.c -lreadline -lutil -Wall -D_GNU_SOURCE
 
 .PHONY: check
 check: $(SOURCE_FILES) $(TEST_FILES)
-	cc -ocheck src/fifo.c tests/runner.c -Isrc -lreadline -lutil -Wall `pkg-config --cflags --libs check`
+	cc -ocheck src/fifo.c tests/runner.c -Isrc -lreadline -lutil -Wall `pkg-config --cflags --libs check` -D_GNU_SOURCE
 	./check
