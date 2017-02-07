@@ -20,6 +20,8 @@
 #include "util.h"
 #include "bitset.h"
 
+#define ARRAY_SIZE(arr) (sizeof(arr)/sizeof(arr[0]))
+
 struct bgw_control {
 	struct subshell_t subshell;
 
@@ -45,7 +47,9 @@ void command_list(const char *args);
 void command_continue();
 void command_run();
 void readline_handler(char *line);
-void finalize_slave(int signum);
+void finalize_slave();
+int signal_handler(int sigfd);
+int get_signalfd();
 
 void done() {
 	kill(ctl.subshell.pid, SIGTERM);
@@ -327,7 +331,7 @@ void readline_handler(char *line) {
 	line = 0;
 }
 
-void finalize_slave(int signum) {
+void finalize_slave() {
 	int status = close_subshell(&ctl.subshell);
 	if (status < 0) {
 		warn("failed to waitpid");
@@ -335,8 +339,40 @@ void finalize_slave(int signum) {
 	fprintf(stderr, "shell terminated with %d\n", status);
 }
 
+int signal_handler(int sigfd) {
+	struct signalfd_siginfo info;
+	ssize_t bytes;
+
+	bytes = read(sigfd, &info, sizeof(info));
+	if (bytes < 0 && (errno == EAGAIN || errno == EINTR)) {
+		return -1;
+	} else if (bytes != sizeof(info)) {
+		return 0;
+	}
+
+	switch (info.ssi_signo) {
+	case SIGCHLD:
+		finalize_slave();
+		break;
+	}
+	return 0;
+}
+
+int get_signalfd() {
+	sigset_t sigset;
+
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGCHLD);
+
+	sigprocmask(SIG_BLOCK, &sigset, NULL);
+
+	int sigfd = signalfd(-1, &sigset, SFD_CLOEXEC);
+	return sigfd;
+}
+
 int main(int argc, char **argv) {
 	ssize_t lines;
+	int sigfd;
 
 	if (argc < 2) {
 		err(EXIT_FAILURE, "not enough arguments");
@@ -348,8 +384,19 @@ int main(int argc, char **argv) {
 	}
 	ctl.breakpoints = bitset_new(lines);
 
+	sigfd = get_signalfd();
+	if (sigfd < 0) {
+		err(EXIT_FAILURE, "failed to handle signals");
+	}
+
+	enum {
+		POLLFD_STDIN,
+		POLLFD_SIGNAL
+	};
+
 	struct pollfd pfd[] = {
-		{ .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP }
+		[POLLFD_STDIN] = { .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP },
+		[POLLFD_SIGNAL] = { .fd = sigfd, .events = POLLIN | POLLERR | POLLHUP },
 	};
 
 	rl_callback_handler_install ("> ", readline_handler);
@@ -357,9 +404,9 @@ int main(int argc, char **argv) {
 	signal(SIGCHLD, finalize_slave);
 
 	while (!ctl.die) {
-		int ret;
+		int i, ret;
 
-		ret = poll(pfd, 1, -1);
+		ret = poll(pfd, ARRAY_SIZE(pfd), -1);
 		if (ret < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -368,12 +415,16 @@ int main(int argc, char **argv) {
 			warn("poll failed");
 			fail();
 		}
-
-		if (pfd[0].revents == 0) {
-			continue;
+		for (i = 0; i < ARRAY_SIZE(pfd); ++i) {
+			if (pfd[i].revents == 0) {
+				continue;
+			}
+			if (i == POLLFD_STDIN) {
+				rl_callback_read_char();
+			} else if (i == POLLFD_SIGNAL) {
+				signal_handler(sigfd);
+			}
 		}
-
-		rl_callback_read_char ();
 	}
 
 	done();
