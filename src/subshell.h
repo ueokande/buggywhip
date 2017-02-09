@@ -51,6 +51,9 @@ int open_subshell(struct subshell_t *subshell, char *path, char **argv) {
 		close(subshell->master);
 
 		dup2(slave, STDIN_FILENO);
+		dup2(slave, STDOUT_FILENO);
+		dup2(slave, STDERR_FILENO);
+
 		close(slave);
 
 		execv(path, argv);
@@ -61,11 +64,13 @@ int open_subshell(struct subshell_t *subshell, char *path, char **argv) {
 	return 0;
 }
 
-int close_subshell(const struct subshell_t *subshell) {
+int close_subshell(struct subshell_t *subshell) {
 	int status;
 	if (waitpid(subshell->pid, &status, 0) < 0) {
 		return -1;
 	}
+	subshell->master = -1;
+	subshell->pid = -1;
 	tcsetattr(STDIN_FILENO, TCSADRAIN, &subshell->attrs);
 	return status;
 }

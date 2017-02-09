@@ -36,6 +36,10 @@ struct bgw_control {
 	struct bitset *breakpoints;
 	int program_counter;
 } ctl = {
+	.subshell = {
+		.pid = -1,
+		.master = -1,
+	},
 	.source_fd = -1,
 	.fifo_fd = -1,
 };
@@ -390,13 +394,15 @@ int main(int argc, char **argv) {
 	}
 
 	enum {
-		POLLFD_STDIN,
-		POLLFD_SIGNAL
+		POLLFD_STDIN = 0,
+		POLLFD_SIGNAL,
+		POLLFD_MASTER,
 	};
 
 	struct pollfd pfd[] = {
 		[POLLFD_STDIN] = { .fd = STDIN_FILENO, .events = POLLIN | POLLERR | POLLHUP },
 		[POLLFD_SIGNAL] = { .fd = sigfd, .events = POLLIN | POLLERR | POLLHUP },
+		[POLLFD_MASTER] = { .fd = -1, .events = POLLIN | POLLERR | POLLHUP },
 	};
 
 	rl_callback_handler_install ("> ", readline_handler);
@@ -406,7 +412,12 @@ int main(int argc, char **argv) {
 	while (!ctl.die) {
 		int i, ret;
 
-		ret = poll(pfd, ARRAY_SIZE(pfd), -1);
+		if (ctl.subshell.master >= 0) {
+			pfd[POLLFD_MASTER].fd = ctl.subshell.master;
+			ret = poll(pfd, ARRAY_SIZE(pfd), -1);
+		} else {
+			ret = poll(pfd, ARRAY_SIZE(pfd) - 1, -1);
+		}
 		if (ret < 0) {
 			if (errno == EINTR) {
 				continue;
@@ -422,7 +433,18 @@ int main(int argc, char **argv) {
 			if (i == POLLFD_STDIN) {
 				rl_callback_read_char();
 			} else if (i == POLLFD_SIGNAL) {
-				signal_handler(sigfd);
+				signal_handler(pfd[i].fd);
+			} else if (i == POLLFD_MASTER) {
+				ssize_t bytes;
+				char buf[BUFSIZ];
+
+				bytes = read(pfd[i].fd, buf, sizeof(buf));
+				if (bytes < 0) {
+					warn("failed to read from subshell");
+					fail();
+				}
+
+				write(STDOUT_FILENO, buf, bytes);
 			}
 		}
 	}
