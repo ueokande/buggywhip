@@ -34,6 +34,9 @@ int main(void) {
 
     suite_add_tcase(s1, tc4);
     tcase_add_test(tc4, test_check_lineno_support);
+    tcase_add_test(tc4, test_command_eq);
+    tcase_add_test(tc4, test_trim_head);
+    tcase_add_test(tc4, test_digit_number);
 
     srunner_run_all(sr, CK_ENV);
     nf = srunner_ntests_failed(sr);
