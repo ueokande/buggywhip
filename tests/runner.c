@@ -4,6 +4,7 @@
 #include "test_fifo.c"
 #include "test_fileutil.c"
 #include "test_bitset.c"
+#include "test_util.c"
 
 int main(void) {
 
@@ -13,6 +14,7 @@ int main(void) {
     TCase *tc1 = tcase_create("fifo");
     TCase *tc2 = tcase_create("fileutil");
     TCase *tc3 = tcase_create("bitset");
+    TCase *tc4 = tcase_create("util");
     SRunner *sr = srunner_create(s1);
 
     suite_add_tcase(s1, tc1);
@@ -29,6 +31,9 @@ int main(void) {
     tcase_add_test(tc3, test_bitset_new);
     tcase_add_test(tc3, test_bitset_set);
     tcase_add_test(tc3, test_bitset_reset);
+
+    suite_add_tcase(s1, tc4);
+    tcase_add_test(tc4, test_check_lineno_support);
 
     srunner_run_all(sr, CK_ENV);
     nf = srunner_ntests_failed(sr);
