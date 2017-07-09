@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -16,6 +17,10 @@ var context struct {
 	stdout io.Writer
 
 	source string
+
+	ch   chan string
+	fifo string
+	cmd  *exec.Cmd
 }
 
 func listFiles(path string) func(string) []string {
@@ -67,8 +72,7 @@ func cmdLoad(args []string) error {
 	}
 	context.source = source
 
-	reloadSource()
-	return nil
+	return reloadSource()
 }
 
 func readlineLoop(rl *readline.Instance) {
@@ -91,6 +95,8 @@ readline_loop:
 			cmdHelp(rl.Stderr())
 		case "list":
 			err = cmdList(fields[1:])
+		case "do":
+			err = cmdDo(fields[1:])
 		case "run", "step", "next", "breakpoint":
 			err = errors.New("command not implemented: " + fields[0])
 		case "load":
@@ -107,8 +113,69 @@ readline_loop:
 
 }
 
-func reloadSource() {
+func reloadSource() error {
 	initListCommand(context.source)
+
+	closeShell()
+
+	fifo, err := mkfifo()
+	go func() {
+		f, err := os.OpenFile(fifo, os.O_WRONLY, 0200)
+		if err != nil {
+			return
+		}
+		for {
+			s, more := <-context.ch
+			io.WriteString(f, s)
+			if !more {
+				return
+			}
+
+		}
+		defer f.Close()
+
+	}()
+	if err != nil {
+		return err
+	}
+	context.ch = make(chan string)
+	context.fifo = fifo
+	context.cmd = exec.Command("/bin/sh", fifo)
+	if err != nil {
+		return err
+	}
+	stdout, err := context.cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := context.cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	go func() {
+		io.Copy(context.stdout, stdout)
+	}()
+	go func() {
+		io.Copy(context.stderr, stderr)
+	}()
+	return context.cmd.Start()
+}
+
+func closeShell() {
+	if context.ch != nil {
+		close(context.ch)
+	}
+
+	if context.cmd != nil {
+		in, err := context.cmd.StdinPipe()
+		if err == nil {
+			in.Close()
+		}
+		context.cmd.Wait()
+	}
+	if context.fifo != "" {
+		os.Remove(context.fifo)
+	}
 }
 
 func run() int {
@@ -132,7 +199,11 @@ func run() int {
 
 	context.stderr = rl.Stderr()
 	context.stdout = rl.Stdout()
-	reloadSource()
+	err = reloadSource()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 
 	readlineLoop(rl)
 
