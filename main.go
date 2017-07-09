@@ -66,6 +66,8 @@ func cmdLoad(args []string) error {
 		return err
 	}
 	context.source = source
+
+	reloadSource()
 	return nil
 }
 
@@ -84,10 +86,12 @@ readline_loop:
 			continue
 		}
 
-		switch fields[0] {
+		switch cmd := fields[0]; cmd {
 		case "help":
 			cmdHelp(rl.Stderr())
-		case "list", "run", "step", "next", "breakpoint":
+		case "list":
+			err = cmdList(fields[1:])
+		case "run", "step", "next", "breakpoint":
 			err = errors.New("command not implemented: " + fields[0])
 		case "load":
 			err = cmdLoad(fields[1:])
@@ -101,6 +105,10 @@ readline_loop:
 		}
 	}
 
+}
+
+func reloadSource() {
+	initListCommand(context.source)
 }
 
 func run() int {
@@ -121,6 +129,10 @@ func run() int {
 		return 1
 	}
 	defer rl.Close()
+
+	context.stderr = rl.Stderr()
+	context.stdout = rl.Stdout()
+	reloadSource()
 
 	readlineLoop(rl)
 
