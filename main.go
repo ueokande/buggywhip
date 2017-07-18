@@ -47,36 +47,23 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("do"),
 )
 
-func cmdHelp(w io.Writer) (int, error) {
-	return io.WriteString(w, `List of classes of commands:
-
-help -- Print list of commands
-exit -- Exit buggywhip
-load -- Load source
-list -- List source from specified line of keyword
-run -- Start debugged script
-step -- Step program line by line
-next -- Step program until it reaches a breakpoint
-breakpoint -- Manage breakpoints
-`)
+var commands = map[string]func([]string) error{
+	"help":       cmdHelp,
+	"load":       cmdLoad,
+	"do":         cmdDo,
+	"run":        cmdNotImplementedFn("run"),
+	"step":       cmdNotImplementedFn("step"),
+	"next":       cmdNotImplementedFn("next"),
+	"breakpoint": cmdNotImplementedFn("breakpoint"),
 }
 
-func cmdLoad(args []string) error {
-	if len(args) == 0 {
-		return errors.New("no files specified")
+func cmdNotImplementedFn(name string) func([]string) error {
+	return func([]string) error {
+		return errors.New("command not implemented: " + name)
 	}
-	source := args[0]
-	_, err := os.Stat(source)
-	if err != nil {
-		return err
-	}
-	context.source = source
-
-	return reloadSource()
 }
 
 func readlineLoop(rl *readline.Instance) {
-readline_loop:
 	for {
 		line, err := rl.Readline()
 		if err == readline.ErrInterrupt {
@@ -89,21 +76,14 @@ readline_loop:
 		if len(fields) == 0 {
 			continue
 		}
+		if fields[0] == "exit" {
+			break
+		}
 
-		switch cmd := fields[0]; cmd {
-		case "help":
-			cmdHelp(rl.Stderr())
-		case "list":
-			err = cmdList(fields[1:])
-		case "do":
-			err = cmdDo(fields[1:])
-		case "run", "step", "next", "breakpoint":
-			err = errors.New("command not implemented: " + fields[0])
-		case "load":
-			err = cmdLoad(fields[1:])
-		case "exit":
-			break readline_loop
-		default:
+		cmd, ok := commands[fields[0]]
+		if ok {
+			err = cmd(fields[1:])
+		} else {
 			err = errors.New("unknown command: " + fields[0] + "")
 		}
 		if err != nil {
