@@ -51,7 +51,7 @@ var commands = map[string]func([]string) error{
 	"help":       cmdHelp,
 	"load":       cmdLoad,
 	"do":         cmdDo,
-	"run":        cmdNotImplementedFn("run"),
+	"run":        cmdRun,
 	"step":       cmdNotImplementedFn("step"),
 	"next":       cmdNotImplementedFn("next"),
 	"breakpoint": cmdNotImplementedFn("breakpoint"),
