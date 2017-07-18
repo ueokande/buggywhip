@@ -50,6 +50,7 @@ var completer = readline.NewPrefixCompleter(
 var commands = map[string]func([]string) error{
 	"help":       cmdHelp,
 	"load":       cmdLoad,
+	"list":       cmdList,
 	"do":         cmdDo,
 	"run":        cmdRun,
 	"step":       cmdNotImplementedFn("step"),
