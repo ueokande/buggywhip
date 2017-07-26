@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -18,9 +17,8 @@ var context struct {
 
 	source string
 
-	ch   chan string
-	fifo string
-	cmd  *exec.Cmd
+	ch    chan string
+	shell *shell
 }
 
 func listFiles(path string) func(string) []string {
@@ -99,64 +97,34 @@ func reloadSource() error {
 
 	closeShell()
 
-	fifo, err := mkfifo()
+	var err error
+	context.shell, err = newShell("/bin/sh", context.stdout, context.stderr)
+	if err != nil {
+		return err
+	}
+
+	context.ch = make(chan string)
 	go func() {
-		f, err := os.OpenFile(fifo, os.O_WRONLY, 0200)
-		if err != nil {
-			return
-		}
 		for {
 			s, more := <-context.ch
-			io.WriteString(f, s)
+			context.shell.Write([]byte(s))
 			if !more {
 				return
 			}
-
 		}
-		defer f.Close()
+	}()
 
-	}()
-	if err != nil {
-		return err
-	}
-	context.ch = make(chan string)
-	context.fifo = fifo
-	context.cmd = exec.Command("/bin/sh", fifo)
-	if err != nil {
-		return err
-	}
-	stdout, err := context.cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := context.cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	go func() {
-		io.Copy(context.stdout, stdout)
-	}()
-	go func() {
-		io.Copy(context.stderr, stderr)
-	}()
-	return context.cmd.Start()
+	return nil
 }
 
 func closeShell() {
 	if context.ch != nil {
 		close(context.ch)
 	}
-
-	if context.cmd != nil {
-		in, err := context.cmd.StdinPipe()
-		if err == nil {
-			in.Close()
-		}
-		context.cmd.Wait()
+	if context.shell != nil {
+		context.shell.Close()
 	}
-	if context.fifo != "" {
-		os.Remove(context.fifo)
-	}
+	context.shell = nil
 }
 
 func run() int {
