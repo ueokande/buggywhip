@@ -3,24 +3,19 @@ package main
 import (
 	"bufio"
 	"errors"
-	"io"
 	"os"
 )
 
 type runContext struct {
 	source string
-	stdout io.Writer
-	stderr io.Writer
 	w      func(string)
 }
 
-func newRunContext(source string, stdout io.Writer, stderr io.Writer, writer func(string)) (*runContext, error) {
+func newRunContext(source string, writer func(string)) *runContext {
 	return &runContext{
 		source: source,
-		stdout: stdout,
-		stderr: stderr,
 		w:      writer,
-	}, nil
+	}
 }
 
 func (c *runContext) run(args []string) error {

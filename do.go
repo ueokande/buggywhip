@@ -8,10 +8,10 @@ type doContext struct {
 	w func(string)
 }
 
-func newDoContext(writer func(string)) (*doContext, error) {
+func newDoContext(writer func(string)) *doContext {
 	return &doContext{
 		w: writer,
-	}, nil
+	}
 }
 
 func (c *doContext) run(args []string) error {
