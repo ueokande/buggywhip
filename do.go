@@ -1,17 +1,23 @@
 package main
 
 import (
-	"errors"
 	"strings"
 )
 
-func cmdDo(args []string) error {
-	if context.ch == nil {
-		errors.New("Shell not started")
-	}
+type doContext struct {
+	w func(string)
+}
+
+func newDoContext(writer func(string)) (*doContext, error) {
+	return &doContext{
+		w: writer,
+	}, nil
+}
+
+func (c *doContext) run(args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	context.ch <- strings.Join(args, " ") + "\n"
+	c.w(strings.Join(args, " ") + "\n")
 	return nil
 }
