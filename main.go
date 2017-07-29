@@ -55,7 +55,7 @@ var completer = readline.NewPrefixCompleter(
 )
 
 var commands = map[string]func([]string) error{
-	"help":       context.help.run,
+	"help":       func(args []string) error { return context.help.run(args) },
 	"load":       cmdLoad,
 	"list":       func(args []string) error { return context.line.run(args) },
 	"do":         func(args []string) error { return context.do.run(args) },
@@ -121,22 +121,13 @@ func reloadSource() error {
 	writer := func(line string) {
 		context.ch <- line
 	}
-	context.help, err = newHelpContext(context.stderr)
-	if err != nil {
-		return err
-	}
+	context.help = newHelpContext(context.stderr)
 	context.line, err = newListContext(context.source, context.stdout, context.stderr)
 	if err != nil {
 		return err
 	}
-	context.do, err = newDoContext(writer)
-	if err != nil {
-		return err
-	}
-	context.run, err = newRunContext(context.source, context.stdout, context.stderr, writer)
-	if err != nil {
-		return err
-	}
+	context.do = newDoContext(writer)
+	context.run = newRunContext(context.source, writer)
 
 	closeShell()
 

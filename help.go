@@ -8,10 +8,10 @@ type helpContext struct {
 	out io.Writer
 }
 
-func newHelpContext(out io.Writer) (*helpContext, error) {
+func newHelpContext(out io.Writer) *helpContext {
 	return &helpContext{
 		out: out,
-	}, nil
+	}
 }
 
 func (c *helpContext) run(args []string) error {
