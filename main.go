@@ -11,6 +11,10 @@ import (
 	"github.com/chzyer/readline"
 )
 
+type command interface {
+	run(args []string) error
+}
+
 var context struct {
 	stderr io.Writer
 	stdout io.Writer
@@ -19,6 +23,8 @@ var context struct {
 
 	ch    chan string
 	shell *shell
+
+	line command
 }
 
 func listFiles(path string) func(string) []string {
@@ -48,12 +54,26 @@ var completer = readline.NewPrefixCompleter(
 var commands = map[string]func([]string) error{
 	"help":       cmdHelp,
 	"load":       cmdLoad,
-	"list":       cmdList,
+	"list":       func(args []string) error { return context.line.run(args) },
 	"do":         cmdDo,
 	"run":        cmdRun,
 	"step":       cmdNotImplementedFn("step"),
 	"next":       cmdNotImplementedFn("next"),
 	"breakpoint": cmdNotImplementedFn("breakpoint"),
+}
+
+func cmdLoad(args []string) error {
+	if len(args) == 0 {
+		return errors.New("no files specified")
+	}
+	source := args[0]
+	_, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	context.source = source
+
+	return reloadSource()
 }
 
 func cmdNotImplementedFn(name string) func([]string) error {
@@ -93,11 +113,15 @@ func readlineLoop(rl *readline.Instance) {
 }
 
 func reloadSource() error {
-	initListCommand(context.source)
+	var err error
+
+	context.line, err = newListContext(context.source, context.stdout, context.stderr)
+	if err != nil {
+		return err
+	}
 
 	closeShell()
 
-	var err error
 	context.shell, err = newShell("/bin/sh", context.stdout, context.stderr)
 	if err != nil {
 		return err

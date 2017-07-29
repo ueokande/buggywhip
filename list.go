@@ -4,24 +4,33 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-var listContext struct {
-	noWidth      int
-	listLastLine int
+type lineContext struct {
+	stdout io.Writer
+	stderr io.Writer
+	source string
+	width  int
+	last   int
 }
 
-func initListCommand(source string) error {
+func newListContext(source string, stdout io.Writer, stderr io.Writer) (*lineContext, error) {
 	nos, err := countFileLines(source)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	listContext.noWidth = len(strconv.FormatInt(int64(nos), 10))
-	return nil
+	w := len(strconv.FormatInt(int64(nos), 10))
+	return &lineContext{
+		stdout: stdout,
+		stderr: stderr,
+		source: source,
+		width:  w,
+	}, nil
 }
 
 func countFileLines(source string) (int, error) {
@@ -39,46 +48,46 @@ func countFileLines(source string) (int, error) {
 	return n, nil
 }
 
-func cmdList(args []string) error {
-	if len(context.source) == 0 {
+func (c *lineContext) run(args []string) error {
+	if len(c.source) == 0 {
 		return errors.New("file not loaded")
 	}
 	if len(args) == 0 {
-		return cmdLineNumber(listContext.listLastLine, 10)
+		return c.fromNumber(c.last, 10)
 	}
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
-		return cmdLineNumber(n, 10)
+		return c.fromNumber(n, 10)
 	} else {
-		return cmdLineKeyword(args[0], 10)
+		return c.fromKeyword(args[0], 10)
 	}
 }
 
-func cmdLineNumber(from int, count int) error {
-	f, err := os.Open(context.source)
+func (c *lineContext) fromNumber(from int, count int) error {
+	f, err := os.Open(c.source)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	format := "%" + strconv.FormatInt(int64(listContext.noWidth), 10) + "d %s\n"
+	format := "%" + strconv.FormatInt(int64(c.width), 10) + "d %s\n"
 	s := bufio.NewScanner(f)
 	no := 1
 	for s.Scan() && no <= from+count {
 		if no >= from {
-			fmt.Fprintf(context.stderr, format, no, s.Text())
+			fmt.Fprintf(c.stderr, format, no, s.Text())
 		}
 		no++
 	}
-	listContext.listLastLine = no
+	c.last = no
 	if !s.Scan() {
-		listContext.listLastLine = 0
+		c.last = 0
 	}
 	return nil
 }
 
-func cmdLineKeyword(keyword string, count int) error {
-	f, err := os.Open(context.source)
+func (c *lineContext) fromKeyword(keyword string, count int) error {
+	f, err := os.Open(c.source)
 	if err != nil {
 		return err
 	}
@@ -88,7 +97,7 @@ func cmdLineKeyword(keyword string, count int) error {
 		return !unicode.IsLetter(c) && !unicode.IsNumber(c) && c != '_'
 	}
 
-	format := "%" + strconv.FormatInt(int64(listContext.noWidth), 10) + "d %s\n"
+	format := "%" + strconv.FormatInt(int64(c.width), 10) + "d %s\n"
 	s := bufio.NewScanner(f)
 	no := 1
 	from := -1
@@ -105,7 +114,7 @@ func cmdLineKeyword(keyword string, count int) error {
 
 		}
 		if from >= 0 {
-			fmt.Fprintf(context.stderr, format, no, s.Text())
+			fmt.Fprintf(c.stderr, format, no, s.Text())
 		}
 		no++
 		if from >= 0 && no > from+count {
@@ -115,9 +124,9 @@ func cmdLineKeyword(keyword string, count int) error {
 	if from == -1 {
 		return errors.New("keyword not found: " + keyword)
 	}
-	listContext.listLastLine = no
+	c.last = no
 	if !s.Scan() {
-		listContext.listLastLine = 0
+		c.last = 0
 	}
 	return nil
 }
