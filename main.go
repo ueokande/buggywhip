@@ -122,7 +122,7 @@ func reloadSource() error {
 		context.ch <- line
 	}
 	context.help = newHelpContext(context.stderr)
-	context.line, err = newListContext(context.source, context.stdout, context.stderr)
+	context.line, err = newListContext(context.source, context.stderr)
 	if err != nil {
 		return err
 	}
