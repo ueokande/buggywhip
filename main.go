@@ -24,8 +24,9 @@ var context struct {
 	ch    chan string
 	shell *shell
 
-	run  command
 	line command
+	do   command
+	run  command
 }
 
 func listFiles(path string) func(string) []string {
@@ -56,7 +57,7 @@ var commands = map[string]func([]string) error{
 	"help":       cmdHelp,
 	"load":       cmdLoad,
 	"list":       func(args []string) error { return context.line.run(args) },
-	"do":         cmdDo,
+	"do":         func(args []string) error { return context.do.run(args) },
 	"run":        func(args []string) error { return context.run.run(args) },
 	"step":       cmdNotImplementedFn("step"),
 	"next":       cmdNotImplementedFn("next"),
@@ -120,6 +121,10 @@ func reloadSource() error {
 		context.ch <- line
 	}
 	context.line, err = newListContext(context.source, context.stdout, context.stderr)
+	if err != nil {
+		return err
+	}
+	context.do, err = newDoContext(writer)
 	if err != nil {
 		return err
 	}
