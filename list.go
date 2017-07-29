@@ -12,22 +12,20 @@ import (
 )
 
 type lineContext struct {
-	stdout io.Writer
-	stderr io.Writer
+	out    io.Writer
 	source string
 	width  int
 	last   int
 }
 
-func newListContext(source string, stdout io.Writer, stderr io.Writer) (*lineContext, error) {
+func newListContext(source string, out io.Writer) (*lineContext, error) {
 	nos, err := countFileLines(source)
 	if err != nil {
 		return nil, err
 	}
 	w := len(strconv.FormatInt(int64(nos), 10))
 	return &lineContext{
-		stdout: stdout,
-		stderr: stderr,
+		out:    out,
 		source: source,
 		width:  w,
 	}, nil
@@ -75,7 +73,7 @@ func (c *lineContext) fromNumber(from int, count int) error {
 	no := 1
 	for s.Scan() && no <= from+count {
 		if no >= from {
-			fmt.Fprintf(c.stderr, format, no, s.Text())
+			fmt.Fprintf(c.out, format, no, s.Text())
 		}
 		no++
 	}
@@ -114,7 +112,7 @@ func (c *lineContext) fromKeyword(keyword string, count int) error {
 
 		}
 		if from >= 0 {
-			fmt.Fprintf(c.stderr, format, no, s.Text())
+			fmt.Fprintf(c.out, format, no, s.Text())
 		}
 		no++
 		if from >= 0 && no > from+count {
