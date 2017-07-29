@@ -2,11 +2,20 @@ package main
 
 import (
 	"io"
-	"os"
 )
 
-func cmdHelp(args []string) error {
-	_, err := io.WriteString(os.Stderr, `List of classes of commands:
+type helpContext struct {
+	out io.Writer
+}
+
+func newHelpContext(out io.Writer) (*helpContext, error) {
+	return &helpContext{
+		out: out,
+	}, nil
+}
+
+func (c *helpContext) run(args []string) error {
+	_, err := io.WriteString(c.out, `List of classes of commands:
 
 help -- Print list of commands
 exit -- Exit buggywhip

@@ -24,6 +24,7 @@ var context struct {
 	ch    chan string
 	shell *shell
 
+	help command
 	line command
 	do   command
 	run  command
@@ -54,7 +55,7 @@ var completer = readline.NewPrefixCompleter(
 )
 
 var commands = map[string]func([]string) error{
-	"help":       cmdHelp,
+	"help":       context.help.run,
 	"load":       cmdLoad,
 	"list":       func(args []string) error { return context.line.run(args) },
 	"do":         func(args []string) error { return context.do.run(args) },
@@ -119,6 +120,10 @@ func reloadSource() error {
 
 	writer := func(line string) {
 		context.ch <- line
+	}
+	context.help, err = newHelpContext(context.stderr)
+	if err != nil {
+		return err
 	}
 	context.line, err = newListContext(context.source, context.stdout, context.stderr)
 	if err != nil {
