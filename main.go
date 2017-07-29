@@ -24,6 +24,7 @@ var context struct {
 	ch    chan string
 	shell *shell
 
+	run  command
 	line command
 }
 
@@ -56,7 +57,7 @@ var commands = map[string]func([]string) error{
 	"load":       cmdLoad,
 	"list":       func(args []string) error { return context.line.run(args) },
 	"do":         cmdDo,
-	"run":        cmdRun,
+	"run":        func(args []string) error { return context.run.run(args) },
 	"step":       cmdNotImplementedFn("step"),
 	"next":       cmdNotImplementedFn("next"),
 	"breakpoint": cmdNotImplementedFn("breakpoint"),
@@ -115,7 +116,14 @@ func readlineLoop(rl *readline.Instance) {
 func reloadSource() error {
 	var err error
 
+	writer := func(line string) {
+		context.ch <- line
+	}
 	context.line, err = newListContext(context.source, context.stdout, context.stderr)
+	if err != nil {
+		return err
+	}
+	context.run, err = newRunContext(context.source, context.stdout, context.stderr, writer)
 	if err != nil {
 		return err
 	}
