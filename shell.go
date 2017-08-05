@@ -89,6 +89,7 @@ func mkfifo() (string, error) {
 	name := filepath.Join(dir, base)
 	err := syscall.Mknod(name, syscall.S_IFIFO|0666, 0)
 	if err != nil {
+		fmt.Println("0")
 		return "", err
 	}
 	return name, nil

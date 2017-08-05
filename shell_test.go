@@ -1,16 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"testing"
 )
 
 func TestNewShell(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
 
-	cat, err := newShell(`/bin/sh`, bufio.NewWriter(&stdout), bufio.NewWriter(&stderr))
+	cat, err := newShell(`/bin/sh`, stdout, stderr)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

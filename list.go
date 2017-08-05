@@ -11,24 +11,13 @@ import (
 	"unicode"
 )
 
-type lineContext struct {
-	out    io.Writer
-	source string
-	width  int
-	last   int
-}
-
-func newListContext(source string, out io.Writer) (*lineContext, error) {
+func fileLineNoWidth(source string) (int, error) {
 	nos, err := countFileLines(source)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	w := len(strconv.FormatInt(int64(nos), 10))
-	return &lineContext{
-		out:    out,
-		source: source,
-		width:  w,
-	}, nil
+	return w, nil
 }
 
 func countFileLines(source string) (int, error) {
@@ -46,45 +35,34 @@ func countFileLines(source string) (int, error) {
 	return n, nil
 }
 
-func (c *lineContext) run(args []string) error {
-	if len(c.source) == 0 {
-		return errors.New("file not loaded")
-	}
-	if len(args) == 0 {
-		return c.fromNumber(c.last, 10)
-	}
-	n, err := strconv.Atoi(args[0])
-	if err == nil {
-		return c.fromNumber(n, 10)
-	} else {
-		return c.fromKeyword(args[0], 10)
-	}
+func (c *context) listContinuously(count int, out io.Writer) error {
+	return c.listByNum(c.listLast+0, count, out)
 }
 
-func (c *lineContext) fromNumber(from int, count int) error {
+func (c *context) listByNum(from int, count int, out io.Writer) error {
 	f, err := os.Open(c.source)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	format := "%" + strconv.FormatInt(int64(c.width), 10) + "d %s\n"
+	format := "%" + strconv.FormatInt(int64(c.listWidth), 10) + "d %s\n"
 	s := bufio.NewScanner(f)
-	no := 1
-	for s.Scan() && no <= from+count {
+	no := 0
+	for s.Scan() && no < from+count {
 		if no >= from {
-			fmt.Fprintf(c.out, format, no, s.Text())
+			fmt.Fprintf(out, format, no+1, s.Text())
 		}
 		no++
 	}
-	c.last = no
+	c.listLast = no
 	if !s.Scan() {
-		c.last = 0
+		c.listLast = 0
 	}
 	return nil
 }
 
-func (c *lineContext) fromKeyword(keyword string, count int) error {
+func (c *context) listByKeyword(keyword string, count int, out io.Writer) error {
 	f, err := os.Open(c.source)
 	if err != nil {
 		return err
@@ -95,7 +73,7 @@ func (c *lineContext) fromKeyword(keyword string, count int) error {
 		return !unicode.IsLetter(c) && !unicode.IsNumber(c) && c != '_'
 	}
 
-	format := "%" + strconv.FormatInt(int64(c.width), 10) + "d %s\n"
+	format := "%" + strconv.FormatInt(int64(c.listWidth), 10) + "d %s\n"
 	s := bufio.NewScanner(f)
 	no := 1
 	from := -1
@@ -112,19 +90,19 @@ func (c *lineContext) fromKeyword(keyword string, count int) error {
 
 		}
 		if from >= 0 {
-			fmt.Fprintf(c.out, format, no, s.Text())
+			fmt.Fprintf(out, format, no, s.Text())
 		}
 		no++
-		if from >= 0 && no > from+count {
+		if from >= 0 && no >= from+count {
 			break
 		}
 	}
 	if from == -1 {
 		return errors.New("keyword not found: " + keyword)
 	}
-	c.last = no
+	c.listLast = no
 	if !s.Scan() {
-		c.last = 0
+		c.listLast = 0
 	}
 	return nil
 }

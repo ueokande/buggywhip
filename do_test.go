@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 )
 
 func TestDo(t *testing.T) {
-	var buffer string
-	w := func(line string) {
-		buffer += line
-	}
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
 
-	c := newDoContext(w)
+	c, err := newContext("/bin/cat", "dummy", stdout, stderr)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 
 	lines := [][]string{
 		{},
@@ -19,12 +21,13 @@ func TestDo(t *testing.T) {
 	}
 
 	for _, line := range lines {
-		err := c.run(line)
+		err := c.do(line)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if buffer != "hello world\ngood morning\n" {
-		t.Fatalf("Unexpected line: %s", buffer)
+	c.close()
+	if lines := string(stdout.Bytes()); lines != "hello world\ngood morning\n" {
+		t.Fatalf("Unexpected lines: %s", lines)
 	}
 }

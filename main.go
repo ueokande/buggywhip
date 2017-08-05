@@ -6,29 +6,13 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/chzyer/readline"
 )
 
-type command interface {
-	run(args []string) error
-}
-
-var context struct {
-	stderr io.Writer
-	stdout io.Writer
-
-	source string
-
-	ch    chan string
-	shell *shell
-
-	help command
-	line command
-	do   command
-	run  command
-}
+var ctx *context
 
 func listFiles(path string) func(string) []string {
 	return func(line string) []string {
@@ -55,28 +39,69 @@ var completer = readline.NewPrefixCompleter(
 )
 
 var commands = map[string]func([]string) error{
-	"help":       func(args []string) error { return context.help.run(args) },
+	"help":       cmdHelp,
 	"load":       cmdLoad,
-	"list":       func(args []string) error { return context.line.run(args) },
-	"do":         func(args []string) error { return context.do.run(args) },
-	"run":        func(args []string) error { return context.run.run(args) },
+	"list":       cmdList,
+	"do":         cmdDo,
+	"run":        cmdRun,
 	"step":       cmdNotImplementedFn("step"),
 	"next":       cmdNotImplementedFn("next"),
 	"breakpoint": cmdNotImplementedFn("breakpoint"),
 }
 
+func cmdHelp(args []string) error {
+	_, err := io.WriteString(os.Stderr, `List of classes of commands:
+
+help -- Print list of commands
+exit -- Exit buggywhip
+load -- Load source
+list -- List source from specified line of keyword
+run -- Start debugged script
+step -- Step program line by line
+next -- Step program until it reaches a breakpoint
+breakpoint -- Manage breakpoints
+`)
+	return err
+}
 func cmdLoad(args []string) error {
 	if len(args) == 0 {
 		return errors.New("no files specified")
 	}
+	if ctx != nil {
+		ctx.close()
+	}
+
+	var err error
+
 	source := args[0]
-	_, err := os.Stat(source)
+	ctx, err = newContext("/bin/sh", source, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
 	}
-	context.source = source
+	return nil
+}
 
-	return reloadSource()
+func cmdList(args []string) error {
+	if ctx == nil {
+		return errors.New("file not loaded")
+	}
+	if len(args) == 0 {
+		return ctx.listContinuously(10, os.Stderr)
+	}
+	n, err := strconv.Atoi(args[0])
+	if err == nil {
+		return ctx.listByNum(n, 10, os.Stderr)
+	} else {
+		return ctx.listByKeyword(args[0], 10, os.Stderr)
+	}
+}
+
+func cmdDo(args []string) error {
+	return ctx.do(args)
+}
+
+func cmdRun(args []string) error {
+	return ctx.run()
 }
 
 func cmdNotImplementedFn(name string) func([]string) error {
@@ -115,54 +140,10 @@ func readlineLoop(rl *readline.Instance) {
 
 }
 
-func reloadSource() error {
-	var err error
-
-	writer := func(line string) {
-		context.ch <- line
-	}
-	context.help = newHelpContext(context.stderr)
-	context.line, err = newListContext(context.source, context.stderr)
-	if err != nil {
-		return err
-	}
-	context.do = newDoContext(writer)
-	context.run = newRunContext(context.source, writer)
-
-	closeShell()
-
-	context.shell, err = newShell("/bin/sh", context.stdout, context.stderr)
-	if err != nil {
-		return err
-	}
-
-	context.ch = make(chan string)
-	go func() {
-		for {
-			s, more := <-context.ch
-			context.shell.Write([]byte(s))
-			if !more {
-				return
-			}
-		}
-	}()
-
-	return nil
-}
-
-func closeShell() {
-	if context.ch != nil {
-		close(context.ch)
-	}
-	if context.shell != nil {
-		context.shell.Close()
-	}
-	context.shell = nil
-}
-
 func run() int {
+	var err error
 	if len(os.Args) > 1 {
-		context.source = os.Args[1]
+		ctx, err = newContext("/bin/sh", os.Args[1], os.Stderr, os.Stdout)
 	}
 
 	rl, err := readline.NewEx(&readline.Config{
@@ -178,14 +159,6 @@ func run() int {
 		return 1
 	}
 	defer rl.Close()
-
-	context.stderr = rl.Stderr()
-	context.stdout = rl.Stdout()
-	err = reloadSource()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
 
 	readlineLoop(rl)
 

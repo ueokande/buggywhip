@@ -1,18 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"io/ioutil"
 	"os"
 	"testing"
 )
 
 func TestRun(t *testing.T) {
-	var buffer string
-	w := func(line string) {
-		buffer += line
-	}
-
-	f, err := ioutil.TempFile("", "bgw")
+	f, err := ioutil.TempFile("", "bgw-testscript")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,13 +17,20 @@ func TestRun(t *testing.T) {
 	f.Close()
 	defer os.Remove(f.Name())
 
-	c := newRunContext(f.Name(), w)
-	err = c.run([]string{})
-
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	c, err := newContext("/bin/cat", f.Name(), stdout, stderr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if buffer != "hello world\ngood morning\n" {
-		t.Fatalf("Unexpected line: %s", buffer)
+
+	err = c.run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.close()
+
+	if lines := string(stdout.Bytes()); lines != "hello world\ngood morning\n" {
+		t.Fatalf("Unexpected lines: %s", lines)
 	}
 }
