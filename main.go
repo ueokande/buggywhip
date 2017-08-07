@@ -91,9 +91,8 @@ func cmdList(args []string) error {
 	n, err := strconv.Atoi(args[0])
 	if err == nil {
 		return ctx.listByNum(n, 10, os.Stderr)
-	} else {
-		return ctx.listByKeyword(args[0], 10, os.Stderr)
 	}
+	return ctx.listByKeyword(args[0], 10, os.Stderr)
 }
 
 func cmdDo(args []string) error {
@@ -144,6 +143,10 @@ func run() int {
 	var err error
 	if len(os.Args) > 1 {
 		ctx, err = newContext("/bin/sh", os.Args[1], os.Stderr, os.Stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 
 	rl, err := readline.NewEx(&readline.Config{
